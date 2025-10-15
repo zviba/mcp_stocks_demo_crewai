@@ -84,13 +84,14 @@ class MCPTool(BaseTool):
     
     def __init__(self, endpoint: str, name: str, description: str):
         super().__init__(name=name, description=description)
-        self.endpoint = endpoint
+        # Store endpoint as a class attribute instead of instance attribute
+        self._endpoint = endpoint
     
     def _run(self, **kwargs) -> str:
         """Execute the MCP tool via HTTP request"""
         try:
             response = requests.post(
-                f"{MCP_SERVER_URL}{self.endpoint}",
+                f"{MCP_SERVER_URL}{self._endpoint}",
                 json=kwargs,
                 timeout=30,
                 headers={"Content-Type": "application/json"}
@@ -99,6 +100,11 @@ class MCPTool(BaseTool):
             return json.dumps(response.json(), indent=2)
         except Exception as e:
             return f"Error calling {self.name}: {str(e)}"
+    
+    @property
+    def endpoint(self):
+        """Get the endpoint for this tool"""
+        return self._endpoint
 
 class SearchSymbolsTool(MCPTool):
     def __init__(self):
@@ -558,16 +564,15 @@ def main():
             # Test search tool
             st.write("Testing SearchSymbolsTool...")
             search_tool = SearchSymbolsTool()
-            st.write(f"Debug: Search tool attributes = {dir(search_tool)}")
-            st.write(f"Debug: Search tool endpoint = {getattr(search_tool, 'endpoint', 'NOT FOUND')}")
-            st.write(f"Debug: Search tool name = {getattr(search_tool, 'name', 'NOT FOUND')}")
+            st.write(f"Debug: Search tool endpoint = {search_tool.endpoint}")
+            st.write(f"Debug: Search tool name = {search_tool.name}")
             search_result = search_tool._run(q=symbol)  # Use 'q' parameter as expected by API
             st.success(f"✅ Search tool working: {search_result[:100]}...")
             
             # Test quote
             st.write("Testing GetQuoteTool...")
             quote_tool = GetQuoteTool()
-            st.write(f"Debug: Quote tool endpoint = {getattr(quote_tool, 'endpoint', 'NOT FOUND')}")
+            st.write(f"Debug: Quote tool endpoint = {quote_tool.endpoint}")
             quote_result = quote_tool._run(symbol=symbol)
             st.success(f"✅ Quote tool working: {quote_result[:100]}...")
             
