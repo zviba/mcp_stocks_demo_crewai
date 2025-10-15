@@ -413,11 +413,48 @@ def run_crewai_analysis(symbol: str, openai_api_key: str, progress_callback=None
         timer.start()
         
         try:
+            # Capture CrewAI verbose output
+            import sys
+            from io import StringIO
+            
+            # Create a custom stdout/stderr capture
+            class VerboseCapture:
+                def __init__(self, callback):
+                    self.callback = callback
+                    self.buffer = StringIO()
+                
+                def write(self, text):
+                    if text.strip():  # Only capture non-empty lines
+                        self.callback(f"🤖 {text.strip()}")
+                    return len(text)
+                
+                def flush(self):
+                    pass
+            
+            # Capture stdout during crew execution
+            old_stdout = sys.stdout
+            old_stderr = sys.stderr
+            
+            if verbose_callback:
+                verbose_capture = VerboseCapture(verbose_callback)
+                sys.stdout = verbose_capture
+                sys.stderr = verbose_capture
+            
             result = crew.kickoff()
+            
+            # Restore stdout/stderr
+            if verbose_callback:
+                sys.stdout = old_stdout
+                sys.stderr = old_stderr
+            
             timer.cancel()  # Cancel timeout if successful
             if verbose_callback:
                 verbose_callback("✅ Crew execution completed successfully - analysis finished")
         except Exception as e:
+            # Restore stdout/stderr in case of error
+            if verbose_callback:
+                sys.stdout = old_stdout
+                sys.stderr = old_stderr
             timer.cancel()  # Cancel timeout on error
             if verbose_callback:
                 verbose_callback(f"❌ Crew execution failed: {str(e)}")
