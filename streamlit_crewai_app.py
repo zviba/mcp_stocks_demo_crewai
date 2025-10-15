@@ -853,13 +853,18 @@ def main():
         # Run analysis directly (no threading for now)
         try:
             result = run_crewai_analysis(symbol, openai_api_key, update_progress, debug_callback)
-            st.session_state["analysis_result"] = result
             
             # Debug: Show what we got from the analysis
             st.write("Debug: Analysis result type =", type(result))
             st.write("Debug: Analysis result keys =", result.keys() if isinstance(result, dict) else "Not a dict")
+            st.write("Debug: Analysis result =", result)
+            
+            # Store in session state
+            st.session_state["analysis_result"] = result
+            st.write("Debug: Stored in session state")
             
         except Exception as e:
+            st.write("Debug: Exception occurred:", str(e))
             st.session_state["analysis_result"] = {
                 "success": False,
                 "error": str(e),
@@ -867,13 +872,19 @@ def main():
                 "symbol": symbol
             }
         
-        # Clear progress container but keep debug log
-        progress_container.empty()
-        st.rerun()
+        # Don't clear progress container yet, let's see what happens
+        # progress_container.empty()
+        # Don't rerun immediately, let's see the debug info first
+        # st.rerun()
     
     # Display results
+    st.write("Debug: Checking for analysis_result in session state...")
+    st.write("Debug: Session state keys =", list(st.session_state.keys()))
+    
     if "analysis_result" in st.session_state:
         result = st.session_state["analysis_result"]
+        st.write("Debug: Found analysis_result in session state")
+        st.write("Debug: Result =", result)
         
         st.header("📋 Analysis Results")
         
@@ -916,6 +927,8 @@ def main():
             
         else:
             st.error(f"❌ Analysis failed: {result.get('error', 'Unknown error')}")
+    else:
+        st.write("Debug: No analysis_result found in session state")
     
     # Footer
     st.markdown("---")
