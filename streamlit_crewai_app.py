@@ -679,12 +679,13 @@ def main():
             st.success("✅ MCP Server Connected")
         else:
             st.error("❌ MCP Server Not Running")
-            st.markdown("""
-            **To start the MCP server:**
-            ```bash
-            python api.py
-            ```
-            """)
+            if st.button("🚀 Start MCP Server", use_container_width=True):
+                with st.spinner("Starting MCP server..."):
+                    if start_mcp_server():
+                        st.success("✅ MCP server started successfully!")
+                        st.rerun()
+                    else:
+                        st.error("❌ Failed to start MCP server")
         
         st.markdown("---")
         
