@@ -613,8 +613,15 @@ def main():
             test_agents = st.button("🤖 Test Agents", use_container_width=True)
         with col3c:
             test_crew = st.button("👥 Test Crew", use_container_width=True)
+        
+        # Show analysis status
         if st.session_state.get("analysis_running", False):
             st.markdown('<p class="status-warning">⏳ Analysis in progress...</p>', unsafe_allow_html=True)
+        elif "analysis_result" in st.session_state:
+            if st.session_state["analysis_result"].get("success", False):
+                st.markdown('<p class="status-success">✅ Analysis completed!</p>', unsafe_allow_html=True)
+            else:
+                st.markdown('<p class="status-error">❌ Analysis failed</p>', unsafe_allow_html=True)
     
     # Clear results
     if clear_results:
@@ -807,7 +814,10 @@ def main():
             st.text(f"Full error: {traceback.format_exc()}")
     
     # Run analysis
-    if run_analysis and symbol and openai_api_key:
+    if run_analysis and symbol and openai_api_key and not st.session_state.get("analysis_running", False):
+        # Set flag to prevent multiple executions
+        st.session_state["analysis_running"] = True
+        
         # Create progress container
         progress_container = st.container()
         
@@ -817,13 +827,20 @@ def main():
             status_text = st.empty()
             progress_percentage = st.empty()
         
+        # Create debug log container
+        debug_container = st.container()
+        
+        # Show debug messages
+        with debug_container:
+            st.subheader("🔍 Debug Log")
+            debug_placeholder = st.empty()
+        
         # Progress callback with percentage tracking
         def update_progress(message, percentage=None):
             status_text.text(message)
             if percentage is not None:
                 progress_bar.progress(percentage)
                 progress_percentage.text(f"Progress: {percentage:.0f}%")
-            st.rerun()
         
         # Store debug messages in session state
         def debug_callback(message):
@@ -842,16 +859,9 @@ def main():
             # Add a small delay to make it readable
             time.sleep(1.0)
         
-        # Create debug log container
-        debug_container = st.container()
-        
-        # Show debug messages
-        with debug_container:
-            st.subheader("🔍 Debug Log")
-            debug_placeholder = st.empty()
-        
         # Run analysis directly (no threading for now)
         try:
+            st.write("Debug: Starting analysis...")
             result = run_crewai_analysis(symbol, openai_api_key, update_progress, debug_callback)
             
             # Debug: Show what we got from the analysis
@@ -861,7 +871,8 @@ def main():
             
             # Store in session state
             st.session_state["analysis_result"] = result
-            st.write("Debug: Stored in session state")
+            st.session_state["analysis_running"] = False  # Clear running flag
+            st.write("Debug: Stored in session state and cleared running flag")
             
         except Exception as e:
             st.write("Debug: Exception occurred:", str(e))
@@ -871,11 +882,11 @@ def main():
                 "timestamp": datetime.now().isoformat(),
                 "symbol": symbol
             }
+            st.session_state["analysis_running"] = False  # Clear running flag
         
-        # Don't clear progress container yet, let's see what happens
-        # progress_container.empty()
-        # Don't rerun immediately, let's see the debug info first
-        # st.rerun()
+        # Clear progress container
+        progress_container.empty()
+        st.rerun()
     
     # Display results
     st.write("Debug: Checking for analysis_result in session state...")
