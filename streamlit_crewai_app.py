@@ -123,24 +123,66 @@ class SearchSymbolsTool(MCPTool):
         super().__init__(
             endpoint="/search",
             name="search_symbols",
-            description="Search for stock symbols by company name or ticker"
+            description="Search for stock symbols by company name or ticker. Requires 'q' parameter."
         )
+    
+    def _run(self, q: str, **kwargs) -> str:
+        """Execute the search tool with required parameters"""
+        try:
+            response = requests.post(
+                f"{MCP_SERVER_URL}{self._endpoint}",
+                json={"q": q},
+                timeout=30,
+                headers={"Content-Type": "application/json"}
+            )
+            response.raise_for_status()
+            return json.dumps(response.json(), indent=2)
+        except Exception as e:
+            return f"Error calling {self.name}: {str(e)}"
 
 class GetQuoteTool(MCPTool):
     def __init__(self):
         super().__init__(
             endpoint="/quote",
             name="get_quote",
-            description="Get latest price, change percentage, and volume for a stock"
+            description="Get latest price, change percentage, and volume for a stock. Requires symbol parameter."
         )
+    
+    def _run(self, symbol: str, **kwargs) -> str:
+        """Execute the quote tool with required parameters"""
+        try:
+            response = requests.post(
+                f"{MCP_SERVER_URL}{self._endpoint}",
+                json={"symbol": symbol},
+                timeout=30,
+                headers={"Content-Type": "application/json"}
+            )
+            response.raise_for_status()
+            return json.dumps(response.json(), indent=2)
+        except Exception as e:
+            return f"Error calling {self.name}: {str(e)}"
 
 class GetPriceSeriesTool(MCPTool):
     def __init__(self):
         super().__init__(
             endpoint="/series",
             name="get_price_series",
-            description="Get historical OHLCV price data for a stock"
+            description="Get historical OHLCV price data for a stock. Requires symbol parameter."
         )
+    
+    def _run(self, symbol: str, **kwargs) -> str:
+        """Execute the price series tool with required parameters"""
+        try:
+            response = requests.post(
+                f"{MCP_SERVER_URL}{self._endpoint}",
+                json={"symbol": symbol},
+                timeout=30,
+                headers={"Content-Type": "application/json"}
+            )
+            response.raise_for_status()
+            return json.dumps(response.json(), indent=2)
+        except Exception as e:
+            return f"Error calling {self.name}: {str(e)}"
 
 class GetIndicatorsTool(MCPTool):
     def __init__(self):
@@ -174,8 +216,22 @@ class GetEventsTool(MCPTool):
         super().__init__(
             endpoint="/events",
             name="get_events",
-            description="Detect market events like gaps, volatility spikes, and 52-week extremes"
+            description="Detect market events like gaps, volatility spikes, and 52-week extremes. Requires symbol parameter."
         )
+    
+    def _run(self, symbol: str, **kwargs) -> str:
+        """Execute the events tool with required parameters"""
+        try:
+            response = requests.post(
+                f"{MCP_SERVER_URL}{self._endpoint}",
+                json={"symbol": symbol},
+                timeout=30,
+                headers={"Content-Type": "application/json"}
+            )
+            response.raise_for_status()
+            return json.dumps(response.json(), indent=2)
+        except Exception as e:
+            return f"Error calling {self.name}: {str(e)}"
 
 class GetExplanationTool(MCPTool):
     def __init__(self):
@@ -692,6 +748,10 @@ def main():
             status_text = st.empty()
             progress_percentage = st.empty()
         
+        # Create Analysis Results section (empty initially)
+        st.header("📋 Analysis Results")
+        results_placeholder = st.empty()
+        
         # Create persistent verbose container outside progress container
         st.subheader("🤖 Agent Activity Log")
         verbose_placeholder = st.empty()
@@ -730,6 +790,42 @@ def main():
             st.session_state["analysis_running"] = False  # Clear running flag
             verbose_callback("Analysis completed and results stored!")
             
+            # Display results immediately
+            with results_placeholder.container():
+                if result.get("success", False):
+                    st.success(f"✅ Analysis completed for {result.get('symbol', 'Unknown')}")
+                    
+                    # Display the result
+                    st.subheader("📊 Comprehensive Analysis Report")
+                    
+                    # Format the result nicely
+                    analysis_text = result.get("result", "")
+                    
+                    # Try to parse and display structured content
+                    if analysis_text:
+                        # If it's a string, display it directly
+                        if isinstance(analysis_text, str):
+                            st.markdown("### Full Analysis Report")
+                            st.markdown(analysis_text)
+                        else:
+                            # If it's an object, try to display it nicely
+                            st.json(analysis_text)
+                    else:
+                        st.warning("No analysis text found in result")
+                    
+                    # Download button
+                    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                    filename = f"crewai_analysis_{result.get('symbol', 'stock')}_{timestamp}.txt"
+                    
+                    st.download_button(
+                        label="📥 Download Report",
+                        data=str(analysis_text),
+                        file_name=filename,
+                        mime="text/plain"
+                    )
+                else:
+                    st.error(f"❌ Analysis failed: {result.get('error', 'Unknown error')}")
+            
         except Exception as e:
             verbose_callback(f"Analysis failed with error: {str(e)}")
             st.session_state["analysis_result"] = {
@@ -739,57 +835,20 @@ def main():
                 "symbol": symbol
             }
             st.session_state["analysis_running"] = False  # Clear running flag
+            
+            # Display error in results section
+            with results_placeholder.container():
+                st.error(f"❌ Analysis failed: {str(e)}")
         
         # Clear only the progress container after completion, keep verbose log
         with progress_container:
             st.empty()  # Clear progress elements
     
-    # Display results
-    if "analysis_result" in st.session_state:
-        result = st.session_state["analysis_result"]
-        
-        st.header("📋 Analysis Results")
-        
-        if result.get("success", False):
-            st.success(f"✅ Analysis completed for {result.get('symbol', 'Unknown')}")
-            
-            # Display the result
-            st.subheader("📊 Comprehensive Analysis Report")
-            
-            # Format the result nicely
-            analysis_text = result.get("result", "")
-            
-            # Try to parse and display structured content
-            if analysis_text:
-                # If it's a string, display it directly
-                if isinstance(analysis_text, str):
-                    st.markdown("### Full Analysis Report")
-                    st.markdown(analysis_text)
-                else:
-                    # If it's an object, try to display it nicely
-                    st.json(analysis_text)
-            else:
-                st.warning("No analysis text found in result")
-            
-            # Download button
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            filename = f"crewai_analysis_{result.get('symbol', 'stock')}_{timestamp}.txt"
-            
-            st.download_button(
-                label="📥 Download Report",
-                data=str(analysis_text),
-                file_name=filename,
-                mime="text/plain"
-            )
-            
-        else:
-            st.error(f"❌ Analysis failed: {result.get('error', 'Unknown error')}")
-        
-        # Show verbose messages if they exist
-        if "verbose_messages" in st.session_state and st.session_state["verbose_messages"]:
-            st.subheader("🤖 Agent Activity Log")
-            for msg in st.session_state["verbose_messages"][-20:]:  # Show last 20 messages
-                st.text(msg)
+    # Show verbose messages if they exist (for completed analyses)
+    if "analysis_result" in st.session_state and "verbose_messages" in st.session_state and st.session_state["verbose_messages"]:
+        st.subheader("🤖 Agent Activity Log")
+        for msg in st.session_state["verbose_messages"][-20:]:  # Show last 20 messages
+            st.text(msg)
     
     # Footer
     st.markdown("---")
