@@ -576,6 +576,12 @@ def main():
             else:
                 st.markdown('<p class="status-error">❌ Analysis failed</p>', unsafe_allow_html=True)
     
+    # Show verbose messages if they exist
+    if "verbose_messages" in st.session_state and st.session_state["verbose_messages"]:
+        st.subheader("🤖 Agent Activity Log")
+        for msg in st.session_state["verbose_messages"][-20:]:  # Show last 20 messages
+            st.text(msg)
+    
     # Clear results
     if clear_results:
         for key in ["analysis_result", "analysis_running", "analysis_progress", "debug_messages", "verbose_messages"]:
@@ -596,10 +602,6 @@ def main():
             progress_bar = st.progress(0)
             status_text = st.empty()
             progress_percentage = st.empty()
-            
-            # Add verbose output section
-            st.subheader("🤖 Agent Activity Log")
-            verbose_container = st.empty()
         
         # Progress callback with percentage tracking
         def update_progress(message, percentage=None):
@@ -616,11 +618,9 @@ def main():
             # Keep only last 50 messages
             if len(st.session_state["verbose_messages"]) > 50:
                 st.session_state["verbose_messages"] = st.session_state["verbose_messages"][-50:]
-            
-            # Update verbose container in real-time
-            with verbose_container.container():
-                for msg in st.session_state["verbose_messages"][-20:]:  # Show last 20 messages
-                    st.text(msg)
+        
+        # Initialize verbose messages
+        verbose_callback(f"Starting analysis for {symbol}...")
         
         # Run analysis directly (no threading for now)
         try:
@@ -629,8 +629,10 @@ def main():
             # Store in session state
             st.session_state["analysis_result"] = result
             st.session_state["analysis_running"] = False  # Clear running flag
+            verbose_callback("Analysis completed and results stored!")
             
         except Exception as e:
+            verbose_callback(f"Analysis failed with error: {str(e)}")
             st.session_state["analysis_result"] = {
                 "success": False,
                 "error": str(e),
