@@ -854,6 +854,11 @@ def main():
         try:
             result = run_crewai_analysis(symbol, openai_api_key, update_progress, debug_callback)
             st.session_state["analysis_result"] = result
+            
+            # Debug: Show what we got from the analysis
+            st.write("Debug: Analysis result type =", type(result))
+            st.write("Debug: Analysis result keys =", result.keys() if isinstance(result, dict) else "Not a dict")
+            
         except Exception as e:
             st.session_state["analysis_result"] = {
                 "success": False,
@@ -881,26 +886,22 @@ def main():
             # Format the result nicely
             analysis_text = result.get("result", "")
             
+            # Debug: Show what we got
+            st.write(f"Debug: Result type = {type(analysis_text)}")
+            st.write(f"Debug: Result length = {len(str(analysis_text))}")
+            
             # Try to parse and display structured content
             if analysis_text:
-                # Split into sections if possible
-                sections = analysis_text.split("\n\n")
-                
-                for i, section in enumerate(sections):
-                    if section.strip():
-                        if i == 0:
-                            st.markdown("### Executive Summary")
-                        elif "technical" in section.lower():
-                            st.markdown("### Technical Analysis")
-                        elif "risk" in section.lower():
-                            st.markdown("### Risk Assessment")
-                        elif "conclusion" in section.lower() or "summary" in section.lower():
-                            st.markdown("### Conclusion")
-                        else:
-                            st.markdown("### Analysis Details")
-                        
-                        st.markdown(section)
-                        st.markdown("---")
+                # If it's a string, display it directly
+                if isinstance(analysis_text, str):
+                    st.markdown("### Full Analysis Report")
+                    st.markdown(analysis_text)
+                else:
+                    # If it's an object, try to display it nicely
+                    st.json(analysis_text)
+            else:
+                st.warning("No analysis text found in result")
+                st.write("Full result object:", result)
             
             # Download button
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -908,7 +909,7 @@ def main():
             
             st.download_button(
                 label="📥 Download Report",
-                data=analysis_text,
+                data=str(analysis_text),
                 file_name=filename,
                 mime="text/plain"
             )
