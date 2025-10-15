@@ -796,12 +796,6 @@ def main():
         # Show analysis status
         if st.session_state.get("analysis_running", False):
             st.markdown('<p class="status-warning">⏳ Analysis in progress...</p>', unsafe_allow_html=True)
-            
-            # Show verbose messages during analysis if they exist
-            if "verbose_messages" in st.session_state and st.session_state["verbose_messages"]:
-                st.subheader("🤖 Agent Activity Log")
-                for msg in st.session_state["verbose_messages"][-20:]:  # Show last 20 messages
-                    st.text(msg)
         elif "analysis_result" in st.session_state:
             if st.session_state["analysis_result"].get("success", False):
                 st.markdown('<p class="status-success">✅ Analysis completed!</p>', unsafe_allow_html=True)
@@ -834,10 +828,6 @@ def main():
         st.header("📋 Analysis Results")
         results_placeholder = st.empty()
         
-        # Create persistent verbose container outside progress container
-        st.subheader("🤖 Agent Activity Log")
-        verbose_placeholder = st.empty()
-        
         # Progress callback with percentage tracking
         def update_progress(message, percentage=None):
             status_text.text(message)
@@ -845,7 +835,7 @@ def main():
                 progress_bar.progress(percentage)
                 progress_percentage.text(f"Progress: {percentage:.0f}%")
         
-        # Verbose callback to capture agent activities
+        # Simplified verbose callback - just store messages, no real-time display
         def verbose_callback(message):
             if "verbose_messages" not in st.session_state:
                 st.session_state["verbose_messages"] = []
@@ -853,11 +843,6 @@ def main():
             # Keep only last 50 messages
             if len(st.session_state["verbose_messages"]) > 50:
                 st.session_state["verbose_messages"] = st.session_state["verbose_messages"][-50:]
-            
-            # Update the verbose display in real-time
-            with verbose_placeholder.container():
-                for msg in st.session_state["verbose_messages"][-20:]:  # Show last 20 messages
-                    st.text(msg)
             
         
         # Initialize verbose messages
@@ -926,9 +911,10 @@ def main():
         with progress_container:
             st.empty()  # Clear progress elements
     
-    # Show verbose messages if they exist (for completed analyses)
+    # Show verbose messages only after analysis is complete
     if "analysis_result" in st.session_state and "verbose_messages" in st.session_state and st.session_state["verbose_messages"]:
         st.subheader("🤖 Agent Activity Log")
+        st.markdown("*Detailed agent execution log from the completed analysis:*")
         for msg in st.session_state["verbose_messages"][-20:]:  # Show last 20 messages
             st.text(msg)
     
