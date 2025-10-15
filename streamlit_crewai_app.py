@@ -421,45 +421,31 @@ def run_crewai_analysis(symbol: str, openai_api_key: str, progress_callback=None
     try:
         # Create agents
         if progress_callback:
-            progress_callback("🔧 Creating specialized agents...", 5)
-        if verbose_callback:
-            verbose_callback("Initializing specialized AI agents for stock analysis...")
+            progress_callback("🔧 Creating agents...", 5)
         
         agents = create_agents(openai_api_key)
-        if verbose_callback:
-            verbose_callback(f"Created {len(agents)} specialized agents: Research, Technical Analysis, and Report Writing")
         
         # Create tasks
         if progress_callback:
-            progress_callback("📋 Setting up analysis tasks...", 8)
-        if verbose_callback:
-            verbose_callback("Setting up analysis workflow tasks...")
+            progress_callback("📋 Setting up tasks...", 8)
         
         tasks = create_tasks(symbol, openai_api_key)
-        if verbose_callback:
-            verbose_callback(f"Created {len(tasks)} analysis tasks for symbol {symbol}")
         
         # Assign agents to tasks
         tasks[0].agent = agents["research"]
         tasks[1].agent = agents["technical"]
         tasks[2].agent = agents["report"]
-        if verbose_callback:
-            verbose_callback("Assigned agents to their respective tasks")
         
         # Create crew
         if progress_callback:
-            progress_callback("👥 Assembling analysis crew...", 10)
-        if verbose_callback:
-            verbose_callback("Assembling collaborative AI crew for sequential analysis...")
+            progress_callback("👥 Assembling crew...", 10)
         
         crew = Crew(
             agents=list(agents.values()),
             tasks=tasks,
             process=Process.sequential,
-            verbose=True  # Enable verbose output for the crew
+            verbose=True
         )
-        if verbose_callback:
-            verbose_callback("Crew assembled successfully - ready to begin analysis")
         
         # Execute analysis with detailed progress tracking
         if progress_callback:
@@ -469,37 +455,24 @@ def run_crewai_analysis(symbol: str, openai_api_key: str, progress_callback=None
         if progress_callback:
             progress_callback("📊 Executing crew workflow...", 20)
         
-        # Test MCP server connectivity before starting crew
+        # Test MCP server connectivity
         if progress_callback:
-            progress_callback("🔍 Testing MCP server connectivity...", 15)
-        if verbose_callback:
-            verbose_callback("Testing MCP server connectivity for data access...")
+            progress_callback("🔍 Testing connectivity...", 15)
         
         try:
             test_response = requests.get(f"{MCP_SERVER_URL}/health", timeout=5)
             if test_response.status_code != 200:
                 raise Exception(f"MCP server returned status {test_response.status_code}")
-            if verbose_callback:
-                verbose_callback("✅ MCP server is responding - data access confirmed")
         except Exception as e:
-            if verbose_callback:
-                verbose_callback(f"❌ MCP server connectivity failed: {str(e)}")
             raise Exception(f"MCP server is not responding: {str(e)}")
         
-        # Set OpenAI API key as environment variable for CrewAI
+        # Set OpenAI API key
         import os
         os.environ["OPENAI_API_KEY"] = openai_api_key
-        if verbose_callback:
-            verbose_callback("OpenAI API key configured for LLM operations")
         
-        # Execute the crew workflow with timeout
+        # Execute the crew workflow
         if progress_callback:
-            progress_callback("📊 Executing crew workflow...", 20)
-        if verbose_callback:
-            verbose_callback("🚀 Starting crew execution - agents will now begin their analysis...")
-            verbose_callback("📋 Task 1: Research Agent will gather stock data...")
-            verbose_callback("📊 Task 2: Technical Agent will analyze indicators...")
-            verbose_callback("📝 Task 3: Report Agent will compile final analysis...")
+            progress_callback("📊 Executing analysis...", 20)
         
         # Add timeout protection for crew execution
         import threading
@@ -516,9 +489,7 @@ def run_crewai_analysis(symbol: str, openai_api_key: str, progress_callback=None
         try:
             # Update progress before crew execution
             if progress_callback:
-                progress_callback("🔄 Executing crew tasks...", 30)
-            if verbose_callback:
-                verbose_callback("⚡ Crew execution starting now...")
+                progress_callback("🔄 Executing tasks...", 30)
             
             # Capture CrewAI verbose output
             import sys
@@ -555,16 +526,12 @@ def run_crewai_analysis(symbol: str, openai_api_key: str, progress_callback=None
                 sys.stderr = old_stderr
             
             timer.cancel()  # Cancel timeout if successful
-            if verbose_callback:
-                verbose_callback("✅ Crew execution completed successfully - analysis finished")
         except Exception as e:
             # Restore stdout/stderr in case of error
             if verbose_callback:
                 sys.stdout = old_stdout
                 sys.stderr = old_stderr
             timer.cancel()  # Cancel timeout on error
-            if verbose_callback:
-                verbose_callback(f"❌ Crew execution failed: {str(e)}")
             raise e
         
         # Final completion message
@@ -593,81 +560,8 @@ def main():
     st.markdown('<h1 class="main-header">🤖 CrewAI + MCP Stocks Analysis</h1>', unsafe_allow_html=True)
     st.markdown("**Comprehensive stock analysis using specialized AI agents**")
     
-    # Usage Instructions
-    with st.expander("📖 How to Use This Application", expanded=False):
-        st.markdown("""
-        ### 🚀 Quick Start Guide
-        
-        **Step 1: Start the MCP Server**
-        - Check the sidebar for "🔗 MCP Server Status"
-        - If it shows "❌ MCP Server Not Running", click the "🚀 Start MCP Server" button
-        - Wait for "✅ MCP Server Connected" status
-        
-        **Step 2: Enter Your OpenAI API Key**
-        - In the sidebar, enter your OpenAI API key in the "🔑 OpenAI API Key" field
-        - This is required for AI-powered explanations in the analysis
-        - You'll see "✅ API Key Set" when successful
-        
-        **Step 3: Enter Stock Symbol**
-        - In the main interface, enter a stock symbol (e.g., AAPL, MSFT, GOOGL)
-        - The system will search for the symbol and display company information
-        
-        **Step 4: Start Analysis**
-        - Click the "🔍 Start Analysis" button
-        - Watch the progress bar and agent activity log
-        - Results will appear in the Analysis Results section
-        
-        ### 🔧 What Happens During Analysis
-        
-        **Three AI Agents Work Together:**
-        1. **Research Agent** - Gathers stock data, quotes, and historical prices
-        2. **Technical Agent** - Analyzes indicators, events, and market patterns  
-        3. **Report Agent** - Compiles findings into a comprehensive report
-        
-        **Data Sources:**
-        - Real-time stock quotes and historical data
-        - Technical indicators (SMA, EMA, RSI)
-        - Market events (gaps, volatility spikes, 52-week extremes)
-        - AI-powered explanations and insights
-        
-        ### 🛠️ Troubleshooting
-        
-        **MCP Server Issues:**
-        - Check the sidebar "🔗 MCP Server Status"
-        - If not connected, click "🚀 Start MCP Server" button
-        - Wait for "✅ MCP Server Connected" status before proceeding
-        
-        **API Key Issues:**
-        - Verify your OpenAI API key is valid and has credits
-        - Check sidebar shows "✅ API Key Set"
-        - The key is required for LLM explanations
-        
-        **Analysis Stuck:**
-        - Check the Agent Activity Log for error messages
-        - Ensure MCP server is running and API key is set
-        - Try a different stock symbol
-        - Use "🗑️ Clear Results" button to reset if needed
-        
-        ### 📊 Understanding the Output
-        
-        **Analysis Results:**
-        - Comprehensive stock analysis report
-        - Technical indicators and market insights
-        - Downloadable report in text format
-        
-        **Agent Activity Log:**
-        - Real-time view of what each agent is doing
-        - Tool usage and data retrieval
-        - Error messages and debugging information
-        
-        ### 🔗 Additional Resources
-        
-        - **CrewAI Documentation**: https://docs.crewai.com/
-        - **MCP Protocol**: https://modelcontextprotocol.io/
-        - **OpenAI API**: https://platform.openai.com/
-        """)
-    
-    st.markdown("---")
+    # Simple instructions
+    st.info("💡 **Quick Start:** 1) Start MCP Server (sidebar) → 2) Enter OpenAI API Key → 3) Enter stock symbol → 4) Click Start Analysis")
     
     # Sidebar configuration
     with st.sidebar:
@@ -703,13 +597,6 @@ def main():
         else:
             st.warning("⚠️ API Key Required")
         
-        # CrewAI Status
-        st.subheader("🤖 CrewAI Status")
-        if CREWAI_AVAILABLE:
-            st.markdown('<p class="status-success">✅ CrewAI Available</p>', unsafe_allow_html=True)
-        else:
-            st.markdown('<p class="status-error">❌ CrewAI Not Installed</p>', unsafe_allow_html=True)
-            st.code("pip install crewai langchain langchain-openai")
     
     # Main content
     if not CREWAI_AVAILABLE:
@@ -845,9 +732,6 @@ def main():
                 st.session_state["verbose_messages"] = st.session_state["verbose_messages"][-50:]
             
         
-        # Initialize verbose messages
-        verbose_callback(f"Starting analysis for {symbol}...")
-        
         # Run analysis directly with progress updates
         try:
             result = run_crewai_analysis(symbol, openai_api_key, update_progress, verbose_callback)
@@ -855,7 +739,6 @@ def main():
             # Store in session state
             st.session_state["analysis_result"] = result
             st.session_state["analysis_running"] = False  # Clear running flag
-            verbose_callback("Analysis completed and results stored!")
             
             # Display results immediately
             with results_placeholder.container():
@@ -894,7 +777,6 @@ def main():
                     st.error(f"❌ Analysis failed: {result.get('error', 'Unknown error')}")
             
         except Exception as e:
-            verbose_callback(f"Analysis failed with error: {str(e)}")
             st.session_state["analysis_result"] = {
                 "success": False,
                 "error": str(e),
@@ -913,10 +795,9 @@ def main():
     
     # Show verbose messages only after analysis is complete
     if "analysis_result" in st.session_state and "verbose_messages" in st.session_state and st.session_state["verbose_messages"]:
-        st.subheader("🤖 Agent Activity Log")
-        st.markdown("*Detailed agent execution log from the completed analysis:*")
-        for msg in st.session_state["verbose_messages"][-20:]:  # Show last 20 messages
-            st.text(msg)
+        with st.expander("🤖 Agent Activity Log", expanded=False):
+            for msg in st.session_state["verbose_messages"][-15:]:  # Show last 15 messages
+                st.text(msg)
     
     # Footer
     st.markdown("---")
