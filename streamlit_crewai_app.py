@@ -593,33 +593,114 @@ def main():
     st.markdown('<h1 class="main-header">🤖 CrewAI + MCP Stocks Analysis</h1>', unsafe_allow_html=True)
     st.markdown("**Comprehensive stock analysis using specialized AI agents**")
     
+    # Usage Instructions
+    with st.expander("📖 How to Use This Application", expanded=False):
+        st.markdown("""
+        ### 🚀 Quick Start Guide
+        
+        **Step 1: Start the MCP Server**
+        ```bash
+        # In a separate terminal, run:
+        python api.py
+        ```
+        The MCP server should start on `http://127.0.0.1:8001`
+        
+        **Step 2: Enter Your OpenAI API Key**
+        - Go to the sidebar (left panel)
+        - Enter your OpenAI API key in the "OpenAI API Key" field
+        - This is required for AI-powered explanations in the analysis
+        
+        **Step 3: Enter Stock Symbol**
+        - In the main interface, enter a stock symbol (e.g., AAPL, MSFT, GOOGL)
+        - The system will search for the symbol and display company information
+        
+        **Step 4: Start Analysis**
+        - Click the "🔍 Start Analysis" button
+        - Watch the progress bar and agent activity log
+        - Results will appear in the Analysis Results section
+        
+        ### 🔧 What Happens During Analysis
+        
+        **Three AI Agents Work Together:**
+        1. **Research Agent** - Gathers stock data, quotes, and historical prices
+        2. **Technical Agent** - Analyzes indicators, events, and market patterns  
+        3. **Report Agent** - Compiles findings into a comprehensive report
+        
+        **Data Sources:**
+        - Real-time stock quotes and historical data
+        - Technical indicators (SMA, EMA, RSI)
+        - Market events (gaps, volatility spikes, 52-week extremes)
+        - AI-powered explanations and insights
+        
+        ### 🛠️ Troubleshooting
+        
+        **MCP Server Issues:**
+        - Ensure the MCP server is running on port 8001
+        - Check the terminal for any error messages
+        - Restart the server if needed
+        
+        **API Key Issues:**
+        - Verify your OpenAI API key is valid and has credits
+        - The key is required for LLM explanations
+        
+        **Analysis Stuck:**
+        - Check the Agent Activity Log for error messages
+        - Ensure all required parameters are being passed to tools
+        - Try a different stock symbol
+        
+        ### 📊 Understanding the Output
+        
+        **Analysis Results:**
+        - Comprehensive stock analysis report
+        - Technical indicators and market insights
+        - Downloadable report in text format
+        
+        **Agent Activity Log:**
+        - Real-time view of what each agent is doing
+        - Tool usage and data retrieval
+        - Error messages and debugging information
+        
+        ### 🔗 Additional Resources
+        
+        - **CrewAI Documentation**: https://docs.crewai.com/
+        - **MCP Protocol**: https://modelcontextprotocol.io/
+        - **OpenAI API**: https://platform.openai.com/
+        """)
+    
+    st.markdown("---")
+    
     # Sidebar configuration
     with st.sidebar:
         st.header("⚙️ Configuration")
         
+        # MCP Server Status
+        st.subheader("🔗 MCP Server Status")
+        if check_mcp_server():
+            st.success("✅ MCP Server Connected")
+        else:
+            st.error("❌ MCP Server Not Running")
+            st.markdown("""
+            **To start the MCP server:**
+            ```bash
+            python api.py
+            ```
+            """)
+        
+        st.markdown("---")
+        
         # OpenAI API Key
+        st.subheader("🔑 OpenAI API Key")
         openai_api_key = st.text_input(
-            "OpenAI API Key",
+            "Enter your OpenAI API Key",
             value=st.session_state.get("openai_api_key", ""),
             type="password",
             help="Required for LLM explanations in technical analysis"
         )
         if openai_api_key:
             st.session_state["openai_api_key"] = openai_api_key
-        
-        # MCP Server Status
-        st.subheader("🔗 MCP Server Status")
-        if check_mcp_server():
-            st.markdown('<p class="status-success">✅ Server Running</p>', unsafe_allow_html=True)
+            st.success("✅ API Key Set")
         else:
-            st.markdown('<p class="status-error">❌ Server Down</p>', unsafe_allow_html=True)
-            if st.button("🚀 Start MCP Server"):
-                with st.spinner("Starting MCP server..."):
-                    if start_mcp_server():
-                        st.success("MCP server started!")
-                        st.rerun()
-                    else:
-                        st.error("Failed to start MCP server")
+            st.warning("⚠️ API Key Required")
         
         # CrewAI Status
         st.subheader("🤖 CrewAI Status")
