@@ -441,6 +441,9 @@ def run_crewai_analysis(symbol: str, openai_api_key: str, progress_callback=None
             progress_callback("📊 Executing crew workflow...", 20)
         if verbose_callback:
             verbose_callback("🚀 Starting crew execution - agents will now begin their analysis...")
+            verbose_callback("📋 Task 1: Research Agent will gather stock data...")
+            verbose_callback("📊 Task 2: Technical Agent will analyze indicators...")
+            verbose_callback("📝 Task 3: Report Agent will compile final analysis...")
         
         # Add timeout protection for crew execution
         import threading
@@ -455,6 +458,12 @@ def run_crewai_analysis(symbol: str, openai_api_key: str, progress_callback=None
         timer.start()
         
         try:
+            # Update progress before crew execution
+            if progress_callback:
+                progress_callback("🔄 Executing crew tasks...", 30)
+            if verbose_callback:
+                verbose_callback("⚡ Crew execution starting now...")
+            
             # Capture CrewAI verbose output
             import sys
             from io import StringIO
@@ -707,42 +716,29 @@ def main():
             with verbose_placeholder.container():
                 for msg in st.session_state["verbose_messages"][-20:]:  # Show last 20 messages
                     st.text(msg)
+            
         
         # Initialize verbose messages
         verbose_callback(f"Starting analysis for {symbol}...")
         
-        # Run analysis in a thread for real-time updates
-        import threading
-        import time
-        
-        def run_analysis_thread():
-            try:
-                result = run_crewai_analysis(symbol, openai_api_key, update_progress, verbose_callback)
-                
-                # Store in session state
-                st.session_state["analysis_result"] = result
-                st.session_state["analysis_running"] = False  # Clear running flag
-                verbose_callback("Analysis completed and results stored!")
-                
-            except Exception as e:
-                verbose_callback(f"Analysis failed with error: {str(e)}")
-                st.session_state["analysis_result"] = {
-                    "success": False,
-                    "error": str(e),
-                    "timestamp": datetime.now().isoformat(),
-                    "symbol": symbol
-                }
-                st.session_state["analysis_running"] = False  # Clear running flag
-        
-        # Start analysis in background thread
-        analysis_thread = threading.Thread(target=run_analysis_thread)
-        analysis_thread.daemon = True
-        analysis_thread.start()
-        
-        # Show real-time updates while analysis is running
-        while st.session_state.get("analysis_running", False):
-            time.sleep(0.5)  # Update every 500ms
-            st.rerun()
+        # Run analysis directly with progress updates
+        try:
+            result = run_crewai_analysis(symbol, openai_api_key, update_progress, verbose_callback)
+            
+            # Store in session state
+            st.session_state["analysis_result"] = result
+            st.session_state["analysis_running"] = False  # Clear running flag
+            verbose_callback("Analysis completed and results stored!")
+            
+        except Exception as e:
+            verbose_callback(f"Analysis failed with error: {str(e)}")
+            st.session_state["analysis_result"] = {
+                "success": False,
+                "error": str(e),
+                "timestamp": datetime.now().isoformat(),
+                "symbol": symbol
+            }
+            st.session_state["analysis_running"] = False  # Clear running flag
         
         # Clear only the progress container after completion, keep verbose log
         with progress_container:
