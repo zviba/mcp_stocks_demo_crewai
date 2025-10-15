@@ -182,8 +182,31 @@ class GetExplanationTool(MCPTool):
         super().__init__(
             endpoint="/explain",
             name="get_explanation",
-            description="Get AI-powered explanation of technical analysis with market context"
+            description="Get AI-powered explanation of technical analysis with market context. Requires symbol and openai_api_key parameters."
         )
+    
+    def _run(self, symbol: str, openai_api_key: str, language: str = "en", tone: str = "neutral", 
+             risk_profile: str = "balanced", horizon_days: int = 30, bullets: bool = True, **kwargs) -> str:
+        """Execute the explanation tool with required parameters"""
+        try:
+            response = requests.post(
+                f"{MCP_SERVER_URL}{self._endpoint}",
+                json={
+                    "symbol": symbol,
+                    "language": language,
+                    "tone": tone,
+                    "risk_profile": risk_profile,
+                    "horizon_days": horizon_days,
+                    "bullets": bullets,
+                    "openai_api_key": openai_api_key
+                },
+                timeout=30,
+                headers={"Content-Type": "application/json"}
+            )
+            response.raise_for_status()
+            return json.dumps(response.json(), indent=2)
+        except Exception as e:
+            return f"Error calling {self.name}: {str(e)}"
 
 def check_mcp_server() -> bool:
     """Check if MCP server is running"""
