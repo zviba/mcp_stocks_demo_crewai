@@ -649,6 +649,12 @@ def main():
         # Show analysis status
         if st.session_state.get("analysis_running", False):
             st.markdown('<p class="status-warning">⏳ Analysis in progress...</p>', unsafe_allow_html=True)
+            
+            # Show verbose messages during analysis if they exist
+            if "verbose_messages" in st.session_state and st.session_state["verbose_messages"]:
+                st.subheader("🤖 Agent Activity Log")
+                for msg in st.session_state["verbose_messages"][-20:]:  # Show last 20 messages
+                    st.text(msg)
         elif "analysis_result" in st.session_state:
             if st.session_state["analysis_result"].get("success", False):
                 st.markdown('<p class="status-success">✅ Analysis completed!</p>', unsafe_allow_html=True)
@@ -677,15 +683,16 @@ def main():
             status_text = st.empty()
             progress_percentage = st.empty()
         
+        # Create persistent verbose container outside progress container
+        st.subheader("🤖 Agent Activity Log")
+        verbose_placeholder = st.empty()
+        
         # Progress callback with percentage tracking
         def update_progress(message, percentage=None):
             status_text.text(message)
             if percentage is not None:
                 progress_bar.progress(percentage)
                 progress_percentage.text(f"Progress: {percentage:.0f}%")
-        
-        # Create verbose container for real-time updates
-        verbose_placeholder = st.empty()
         
         # Verbose callback to capture agent activities
         def verbose_callback(message):
@@ -698,7 +705,6 @@ def main():
             
             # Update the verbose display in real-time
             with verbose_placeholder.container():
-                st.subheader("🤖 Agent Activity Log")
                 for msg in st.session_state["verbose_messages"][-20:]:  # Show last 20 messages
                     st.text(msg)
         
@@ -738,8 +744,9 @@ def main():
             time.sleep(0.5)  # Update every 500ms
             st.rerun()
         
-        # Clear progress container after completion
-        progress_container.empty()
+        # Clear only the progress container after completion, keep verbose log
+        with progress_container:
+            st.empty()  # Clear progress elements
     
     # Display results
     if "analysis_result" in st.session_state:
