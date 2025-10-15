@@ -62,6 +62,18 @@ st.markdown("""
         padding: 1rem;
         margin: 0.5rem 0;
         background-color: #f9f9f9;
+        color: #333333;
+    }
+    .agent-card h4 {
+        color: #1f77b4;
+        margin-top: 0;
+    }
+    .agent-card p {
+        color: #333333;
+        margin: 0.5rem 0;
+    }
+    .agent-card strong {
+        color: #1f77b4;
     }
     .status-success {
         color: #28a745;
@@ -184,13 +196,10 @@ def start_mcp_server():
             return False
     return True
 
-def create_agents(openai_api_key: str, debug_callback=None) -> Dict[str, Agent]:
+def create_agents(openai_api_key: str) -> Dict[str, Agent]:
     """Create CrewAI agents"""
     if not CREWAI_AVAILABLE:
         return {}
-    
-    if debug_callback:
-        debug_callback("Initializing MCP tools...")
     
     # Initialize MCP tools
     search_tool = SearchSymbolsTool()
@@ -200,13 +209,7 @@ def create_agents(openai_api_key: str, debug_callback=None) -> Dict[str, Agent]:
     events_tool = GetEventsTool()
     explanation_tool = GetExplanationTool()
     
-    if debug_callback:
-        debug_callback("MCP tools initialized successfully")
-    
     # Research Agent
-    if debug_callback:
-        debug_callback("Creating Research Agent...")
-    
     research_agent = Agent(
         role="Stock Research Specialist",
         goal="Gather comprehensive basic information about stocks including current quotes, historical data, and company details",
@@ -218,13 +221,7 @@ def create_agents(openai_api_key: str, debug_callback=None) -> Dict[str, Agent]:
         allow_delegation=False
     )
     
-    if debug_callback:
-        debug_callback("Research Agent created successfully")
-    
     # Technical Analyst
-    if debug_callback:
-        debug_callback("Creating Technical Agent...")
-    
     technical_agent = Agent(
         role="Technical Analysis Expert",
         goal="Perform detailed technical analysis using indicators, patterns, and market events to assess stock momentum and trends",
@@ -236,13 +233,7 @@ def create_agents(openai_api_key: str, debug_callback=None) -> Dict[str, Agent]:
         allow_delegation=False
     )
     
-    if debug_callback:
-        debug_callback("Technical Agent created successfully")
-    
     # Report Writer
-    if debug_callback:
-        debug_callback("Creating Report Agent...")
-    
     report_agent = Agent(
         role="Financial Report Writer",
         goal="Create comprehensive, well-structured investment reports that synthesize research and technical analysis into actionable insights",
@@ -254,22 +245,16 @@ def create_agents(openai_api_key: str, debug_callback=None) -> Dict[str, Agent]:
         allow_delegation=False
     )
     
-    if debug_callback:
-        debug_callback("Report Agent created successfully")
-    
     return {
         "research": research_agent,
         "technical": technical_agent,
         "report": report_agent
     }
 
-def create_tasks(symbol: str, openai_api_key: str, debug_callback=None) -> List[Task]:
+def create_tasks(symbol: str, openai_api_key: str) -> List[Task]:
     """Create CrewAI tasks"""
     if not CREWAI_AVAILABLE:
         return []
-    
-    if debug_callback:
-        debug_callback("Creating Research Task...")
     
     # Research Task
     research_task = Task(
@@ -287,12 +272,6 @@ def create_tasks(symbol: str, openai_api_key: str, debug_callback=None) -> List[
         agent=None,
         tools=[SearchSymbolsTool(), GetQuoteTool(), GetPriceSeriesTool()]
     )
-    
-    if debug_callback:
-        debug_callback("Research Task created successfully")
-    
-    if debug_callback:
-        debug_callback("Creating Technical Analysis Task...")
     
     # Technical Analysis Task
     technical_task = Task(
@@ -312,12 +291,6 @@ def create_tasks(symbol: str, openai_api_key: str, debug_callback=None) -> List[
         tools=[GetIndicatorsTool(), GetEventsTool(), GetExplanationTool()],
         context=[research_task]
     )
-    
-    if debug_callback:
-        debug_callback("Technical Analysis Task created successfully")
-    
-    if debug_callback:
-        debug_callback("Creating Report Task...")
     
     # Report Task
     report_task = Task(
@@ -340,12 +313,9 @@ def create_tasks(symbol: str, openai_api_key: str, debug_callback=None) -> List[
         context=[research_task, technical_task]
     )
     
-    if debug_callback:
-        debug_callback("Report Task created successfully")
-    
     return [research_task, technical_task, report_task]
 
-def run_crewai_analysis(symbol: str, openai_api_key: str, progress_callback=None, debug_callback=None) -> Dict[str, Any]:
+def run_crewai_analysis(symbol: str, openai_api_key: str, progress_callback=None) -> Dict[str, Any]:
     """Run CrewAI analysis with progress tracking"""
     if not CREWAI_AVAILABLE:
         return {"error": "CrewAI not available"}
@@ -355,45 +325,29 @@ def run_crewai_analysis(symbol: str, openai_api_key: str, progress_callback=None
         if progress_callback:
             progress_callback("🔧 Creating specialized agents...", 5)
         
-        if debug_callback:
-            debug_callback(f"Creating agents for symbol {symbol}")
-        agents = create_agents(openai_api_key, debug_callback)
-        if debug_callback:
-            debug_callback(f"Created {len(agents)} agents")
+        agents = create_agents(openai_api_key)
         
         # Create tasks
         if progress_callback:
             progress_callback("📋 Setting up analysis tasks...", 8)
         
-        if debug_callback:
-            debug_callback(f"Creating tasks for symbol {symbol}")
-        tasks = create_tasks(symbol, openai_api_key, debug_callback)
-        if debug_callback:
-            debug_callback(f"Created {len(tasks)} tasks")
+        tasks = create_tasks(symbol, openai_api_key)
         
         # Assign agents to tasks
-        if debug_callback:
-            debug_callback("Assigning agents to tasks...")
         tasks[0].agent = agents["research"]
         tasks[1].agent = agents["technical"]
         tasks[2].agent = agents["report"]
-        if debug_callback:
-            debug_callback("Agents assigned to tasks successfully")
         
         # Create crew
         if progress_callback:
             progress_callback("👥 Assembling analysis crew...", 10)
         
-        if debug_callback:
-            debug_callback("Creating crew...")
         crew = Crew(
             agents=list(agents.values()),
             tasks=tasks,
             process=Process.sequential,
             verbose=True  # Enable verbose output for the crew
         )
-        if debug_callback:
-            debug_callback("Crew created successfully")
         
         # Execute analysis with detailed progress tracking
         if progress_callback:
@@ -403,43 +357,29 @@ def run_crewai_analysis(symbol: str, openai_api_key: str, progress_callback=None
         if progress_callback:
             progress_callback("📊 Executing crew workflow...", 20)
         
-        if debug_callback:
-            debug_callback("Starting crew execution")
-        
         # Test MCP server connectivity before starting crew
         if progress_callback:
             progress_callback("🔍 Testing MCP server connectivity...", 15)
         
         try:
             test_response = requests.get(f"{MCP_SERVER_URL}/health", timeout=5)
-            if test_response.status_code == 200:
-                if debug_callback:
-                    debug_callback("MCP server is responding")
-            else:
-                if debug_callback:
-                    debug_callback(f"MCP server returned status {test_response.status_code}")
+            if test_response.status_code != 200:
+                raise Exception(f"MCP server returned status {test_response.status_code}")
         except Exception as e:
-            if debug_callback:
-                debug_callback(f"MCP server test failed: {str(e)}")
             raise Exception(f"MCP server is not responding: {str(e)}")
         
         # Set OpenAI API key as environment variable for CrewAI
-        if debug_callback:
-            debug_callback(f"Setting OpenAI API key (length: {len(openai_api_key)})")
         import os
         os.environ["OPENAI_API_KEY"] = openai_api_key
         
         # Execute the crew workflow with timeout
-        if debug_callback:
-            debug_callback("Executing crew.kickoff()...")
+        if progress_callback:
+            progress_callback("📊 Executing crew workflow...", 20)
         
         # Add timeout protection for crew execution
-        import signal
         import threading
         
         def timeout_handler():
-            if debug_callback:
-                debug_callback("Crew execution timed out after 2 minutes!")
             raise TimeoutError("Crew execution timed out")
         
         # Set up timeout
@@ -449,12 +389,8 @@ def run_crewai_analysis(symbol: str, openai_api_key: str, progress_callback=None
         try:
             result = crew.kickoff()
             timer.cancel()  # Cancel timeout if successful
-            if debug_callback:
-                debug_callback("Crew execution completed successfully")
         except Exception as e:
             timer.cancel()  # Cancel timeout on error
-            if debug_callback:
-                debug_callback(f"Crew execution failed: {str(e)}")
             raise e
         
         # Final completion message
@@ -469,11 +405,6 @@ def run_crewai_analysis(symbol: str, openai_api_key: str, progress_callback=None
         }
         
     except Exception as e:
-        if debug_callback:
-            debug_callback(f"Error in run_crewai_analysis: {str(e)}")
-        import traceback
-        if debug_callback:
-            debug_callback(f"Traceback: {traceback.format_exc()}")
         return {
             "success": False,
             "error": str(e),
@@ -606,14 +537,6 @@ def main():
         clear_results = st.button("🗑️ Clear Results", use_container_width=True)
     
     with col3:
-        col3a, col3b, col3c = st.columns(3)
-        with col3a:
-            test_mcp = st.button("🧪 Test MCP", use_container_width=True)
-        with col3b:
-            test_agents = st.button("🤖 Test Agents", use_container_width=True)
-        with col3c:
-            test_crew = st.button("👥 Test Crew", use_container_width=True)
-        
         # Show analysis status
         if st.session_state.get("analysis_running", False):
             st.markdown('<p class="status-warning">⏳ Analysis in progress...</p>', unsafe_allow_html=True)
@@ -630,189 +553,6 @@ def main():
                 del st.session_state[key]
         st.rerun()
     
-    # Test MCP tools
-    if test_mcp and symbol:
-        st.info("🧪 Testing MCP tools...")
-        try:
-            # Test direct API call first
-            st.write("Testing direct API call...")
-            response = requests.post(
-                f"{MCP_SERVER_URL}/search",
-                json={"q": symbol},
-                timeout=10,
-                headers={"Content-Type": "application/json"}
-            )
-            if response.status_code == 200:
-                st.success(f"✅ Direct API call working: {response.json()[:100]}...")
-            else:
-                st.error(f"❌ Direct API call failed: {response.status_code}")
-            
-            # Test search tool
-            st.write("Testing SearchSymbolsTool...")
-            search_tool = SearchSymbolsTool()
-            st.write(f"Debug: Search tool endpoint = {search_tool.endpoint}")
-            st.write(f"Debug: Search tool name = {search_tool.name}")
-            search_result = search_tool._run(q=symbol)  # Use 'q' parameter as expected by API
-            st.success(f"✅ Search tool working: {search_result[:100]}...")
-            
-            # Test quote
-            st.write("Testing GetQuoteTool...")
-            quote_tool = GetQuoteTool()
-            st.write(f"Debug: Quote tool endpoint = {quote_tool.endpoint}")
-            quote_result = quote_tool._run(symbol=symbol)
-            st.success(f"✅ Quote tool working: {quote_result[:100]}...")
-            
-        except Exception as e:
-            st.error(f"❌ MCP tool test failed: {str(e)}")
-            import traceback
-            st.text(f"Full error: {traceback.format_exc()}")
-    
-    # Test agents only
-    if test_agents and symbol and openai_api_key:
-        st.info("🤖 Testing agent creation...")
-        
-        # Create debug log container
-        debug_container = st.container()
-        
-        with debug_container:
-            st.subheader("🔍 Debug Log")
-            debug_placeholder = st.empty()
-        
-        # Store debug messages in session state
-        def debug_callback(message):
-            if "debug_messages" not in st.session_state:
-                st.session_state["debug_messages"] = []
-            st.session_state["debug_messages"].append(f"[{datetime.now().strftime('%H:%M:%S')}] {message}")
-            # Keep only last 20 messages
-            if len(st.session_state["debug_messages"]) > 20:
-                st.session_state["debug_messages"] = st.session_state["debug_messages"][-20:]
-            
-            # Update debug placeholder in real-time
-            with debug_placeholder.container():
-                for msg in st.session_state["debug_messages"][-10:]:  # Show last 10 messages
-                    st.text(msg)
-            
-            # Add a small delay to make it readable
-            time.sleep(1.0)
-        
-        try:
-            # Test just agent creation
-            agents = create_agents(openai_api_key, debug_callback)
-            st.success(f"✅ Successfully created {len(agents)} agents!")
-            
-            # Test task creation
-            tasks = create_tasks(symbol, openai_api_key, debug_callback)
-            st.success(f"✅ Successfully created {len(tasks)} tasks!")
-            
-        except Exception as e:
-            st.error(f"❌ Agent creation failed: {str(e)}")
-            import traceback
-            st.text(f"Full error: {traceback.format_exc()}")
-    
-    # Test crew creation and execution
-    if test_crew and symbol and openai_api_key:
-        st.info("👥 Testing crew creation and execution...")
-        
-        # Create debug log container
-        debug_container = st.container()
-        
-        with debug_container:
-            st.subheader("🔍 Debug Log")
-            debug_placeholder = st.empty()
-        
-        # Store debug messages in session state
-        def debug_callback(message):
-            if "debug_messages" not in st.session_state:
-                st.session_state["debug_messages"] = []
-            st.session_state["debug_messages"].append(f"[{datetime.now().strftime('%H:%M:%S')}] {message}")
-            # Keep only last 20 messages
-            if len(st.session_state["debug_messages"]) > 20:
-                st.session_state["debug_messages"] = st.session_state["debug_messages"][-20:]
-            
-            # Update debug placeholder in real-time
-            with debug_placeholder.container():
-                for msg in st.session_state["debug_messages"][-10:]:  # Show last 10 messages
-                    st.text(msg)
-            
-            # Add a small delay to make it readable
-            time.sleep(1.0)
-        
-        try:
-            # Create agents and tasks
-            agents = create_agents(openai_api_key, debug_callback)
-            tasks = create_tasks(symbol, openai_api_key, debug_callback)
-            
-            # Assign agents to tasks
-            if debug_callback:
-                debug_callback("Assigning agents to tasks...")
-            tasks[0].agent = agents["research"]
-            tasks[1].agent = agents["technical"]
-            tasks[2].agent = agents["report"]
-            if debug_callback:
-                debug_callback("Agents assigned to tasks successfully")
-            
-            # Create crew
-            if debug_callback:
-                debug_callback("Creating crew...")
-            crew = Crew(
-                agents=list(agents.values()),
-                tasks=tasks,
-                process=Process.sequential,
-                verbose=True
-            )
-            if debug_callback:
-                debug_callback("Crew created successfully")
-            
-            # Test MCP server connectivity
-            if debug_callback:
-                debug_callback("Testing MCP server connectivity...")
-            test_response = requests.get(f"{MCP_SERVER_URL}/health", timeout=5)
-            if test_response.status_code == 200:
-                if debug_callback:
-                    debug_callback("MCP server is responding")
-            else:
-                if debug_callback:
-                    debug_callback(f"MCP server returned status {test_response.status_code}")
-            
-            # Set OpenAI API key
-            if debug_callback:
-                debug_callback(f"Setting OpenAI API key (length: {len(openai_api_key)})")
-            import os
-            os.environ["OPENAI_API_KEY"] = openai_api_key
-            
-            # Execute crew with timeout
-            if debug_callback:
-                debug_callback("Executing crew.kickoff()...")
-            
-            import threading
-            
-            def timeout_handler():
-                if debug_callback:
-                    debug_callback("Crew execution timed out after 1 minute!")
-                raise TimeoutError("Crew execution timed out")
-            
-            # Set up timeout
-            timer = threading.Timer(60.0, timeout_handler)  # 1 minute timeout for testing
-            timer.start()
-            
-            try:
-                result = crew.kickoff()
-                timer.cancel()  # Cancel timeout if successful
-                if debug_callback:
-                    debug_callback("Crew execution completed successfully")
-                st.success("✅ Crew execution completed successfully!")
-                st.text_area("Result Preview", str(result)[:500] + "...", height=200)
-            except Exception as e:
-                timer.cancel()  # Cancel timeout on error
-                if debug_callback:
-                    debug_callback(f"Crew execution failed: {str(e)}")
-                raise e
-            
-        except Exception as e:
-            st.error(f"❌ Crew test failed: {str(e)}")
-            import traceback
-            st.text(f"Full error: {traceback.format_exc()}")
-    
     # Run analysis
     if run_analysis and symbol and openai_api_key and not st.session_state.get("analysis_running", False):
         # Set flag to prevent multiple executions
@@ -827,14 +567,6 @@ def main():
             status_text = st.empty()
             progress_percentage = st.empty()
         
-        # Create debug log container
-        debug_container = st.container()
-        
-        # Show debug messages
-        with debug_container:
-            st.subheader("🔍 Debug Log")
-            debug_placeholder = st.empty()
-        
         # Progress callback with percentage tracking
         def update_progress(message, percentage=None):
             status_text.text(message)
@@ -842,40 +574,15 @@ def main():
                 progress_bar.progress(percentage)
                 progress_percentage.text(f"Progress: {percentage:.0f}%")
         
-        # Store debug messages in session state
-        def debug_callback(message):
-            if "debug_messages" not in st.session_state:
-                st.session_state["debug_messages"] = []
-            st.session_state["debug_messages"].append(f"[{datetime.now().strftime('%H:%M:%S')}] {message}")
-            # Keep only last 20 messages
-            if len(st.session_state["debug_messages"]) > 20:
-                st.session_state["debug_messages"] = st.session_state["debug_messages"][-20:]
-            
-            # Update debug placeholder in real-time
-            with debug_placeholder.container():
-                for msg in st.session_state["debug_messages"][-10:]:  # Show last 10 messages
-                    st.text(msg)
-            
-            # Add a small delay to make it readable
-            time.sleep(1.0)
-        
         # Run analysis directly (no threading for now)
         try:
-            st.write("Debug: Starting analysis...")
-            result = run_crewai_analysis(symbol, openai_api_key, update_progress, debug_callback)
-            
-            # Debug: Show what we got from the analysis
-            st.write("Debug: Analysis result type =", type(result))
-            st.write("Debug: Analysis result keys =", result.keys() if isinstance(result, dict) else "Not a dict")
-            st.write("Debug: Analysis result =", result)
+            result = run_crewai_analysis(symbol, openai_api_key, update_progress)
             
             # Store in session state
             st.session_state["analysis_result"] = result
             st.session_state["analysis_running"] = False  # Clear running flag
-            st.write("Debug: Stored in session state and cleared running flag")
             
         except Exception as e:
-            st.write("Debug: Exception occurred:", str(e))
             st.session_state["analysis_result"] = {
                 "success": False,
                 "error": str(e),
@@ -889,13 +596,8 @@ def main():
         st.rerun()
     
     # Display results
-    st.write("Debug: Checking for analysis_result in session state...")
-    st.write("Debug: Session state keys =", list(st.session_state.keys()))
-    
     if "analysis_result" in st.session_state:
         result = st.session_state["analysis_result"]
-        st.write("Debug: Found analysis_result in session state")
-        st.write("Debug: Result =", result)
         
         st.header("📋 Analysis Results")
         
@@ -908,10 +610,6 @@ def main():
             # Format the result nicely
             analysis_text = result.get("result", "")
             
-            # Debug: Show what we got
-            st.write(f"Debug: Result type = {type(analysis_text)}")
-            st.write(f"Debug: Result length = {len(str(analysis_text))}")
-            
             # Try to parse and display structured content
             if analysis_text:
                 # If it's a string, display it directly
@@ -923,7 +621,6 @@ def main():
                     st.json(analysis_text)
             else:
                 st.warning("No analysis text found in result")
-                st.write("Full result object:", result)
             
             # Download button
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -938,8 +635,6 @@ def main():
             
         else:
             st.error(f"❌ Analysis failed: {result.get('error', 'Unknown error')}")
-    else:
-        st.write("Debug: No analysis_result found in session state")
     
     # Footer
     st.markdown("---")
