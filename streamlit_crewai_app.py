@@ -585,7 +585,11 @@ def main():
         clear_results = st.button("🗑️ Clear Results", use_container_width=True)
     
     with col3:
-        test_mcp = st.button("🧪 Test MCP Tools", use_container_width=True)
+        col3a, col3b = st.columns(2)
+        with col3a:
+            test_mcp = st.button("🧪 Test MCP Tools", use_container_width=True)
+        with col3b:
+            test_agents = st.button("🤖 Test Agents", use_container_width=True)
         if st.session_state.get("analysis_running", False):
             st.markdown('<p class="status-warning">⏳ Analysis in progress...</p>', unsafe_allow_html=True)
     
@@ -633,6 +637,48 @@ def main():
             import traceback
             st.text(f"Full error: {traceback.format_exc()}")
     
+    # Test agents only
+    if test_agents and symbol and openai_api_key:
+        st.info("🤖 Testing agent creation...")
+        
+        # Create debug log container
+        debug_container = st.container()
+        
+        with debug_container:
+            st.subheader("🔍 Debug Log")
+            debug_placeholder = st.empty()
+        
+        # Store debug messages in session state
+        def debug_callback(message):
+            if "debug_messages" not in st.session_state:
+                st.session_state["debug_messages"] = []
+            st.session_state["debug_messages"].append(f"[{datetime.now().strftime('%H:%M:%S')}] {message}")
+            # Keep only last 20 messages
+            if len(st.session_state["debug_messages"]) > 20:
+                st.session_state["debug_messages"] = st.session_state["debug_messages"][-20:]
+            
+            # Update debug placeholder in real-time
+            with debug_placeholder.container():
+                for msg in st.session_state["debug_messages"][-10:]:  # Show last 10 messages
+                    st.text(msg)
+            
+            # Add a small delay to make it readable
+            time.sleep(1.0)
+        
+        try:
+            # Test just agent creation
+            agents = create_agents(openai_api_key, debug_callback)
+            st.success(f"✅ Successfully created {len(agents)} agents!")
+            
+            # Test task creation
+            tasks = create_tasks(symbol, openai_api_key, debug_callback)
+            st.success(f"✅ Successfully created {len(tasks)} tasks!")
+            
+        except Exception as e:
+            st.error(f"❌ Agent creation failed: {str(e)}")
+            import traceback
+            st.text(f"Full error: {traceback.format_exc()}")
+    
     # Run analysis
     if run_analysis and symbol and openai_api_key:
         # Create progress container
@@ -660,12 +706,22 @@ def main():
             # Keep only last 20 messages
             if len(st.session_state["debug_messages"]) > 20:
                 st.session_state["debug_messages"] = st.session_state["debug_messages"][-20:]
+            
+            # Update debug placeholder in real-time
+            with debug_placeholder.container():
+                for msg in st.session_state["debug_messages"][-10:]:  # Show last 10 messages
+                    st.text(msg)
+            
+            # Add a small delay to make it readable
+            time.sleep(1.0)
+        
+        # Create debug log container
+        debug_container = st.container()
         
         # Show debug messages
-        if "debug_messages" in st.session_state and st.session_state["debug_messages"]:
+        with debug_container:
             st.subheader("🔍 Debug Log")
-            for msg in st.session_state["debug_messages"][-10:]:  # Show last 10 messages
-                st.text(msg)
+            debug_placeholder = st.empty()
         
         # Run analysis directly (no threading for now)
         try:
@@ -679,7 +735,7 @@ def main():
                 "symbol": symbol
             }
         
-        # Clear progress container
+        # Clear progress container but keep debug log
         progress_container.empty()
         st.rerun()
     
