@@ -147,8 +147,27 @@ class GetIndicatorsTool(MCPTool):
         super().__init__(
             endpoint="/indicators",
             name="get_indicators",
-            description="Get technical indicators (SMA, EMA, RSI) for a stock"
+            description="Get technical indicators (SMA, EMA, RSI) for a stock. Requires symbol parameter."
         )
+    
+    def _run(self, symbol: str, window_sma: int = 20, window_ema: int = 50, window_rsi: int = 14, **kwargs) -> str:
+        """Execute the indicators tool with required parameters"""
+        try:
+            response = requests.post(
+                f"{MCP_SERVER_URL}{self._endpoint}",
+                json={
+                    "symbol": symbol,
+                    "window_sma": window_sma,
+                    "window_ema": window_ema,
+                    "window_rsi": window_rsi
+                },
+                timeout=30,
+                headers={"Content-Type": "application/json"}
+            )
+            response.raise_for_status()
+            return json.dumps(response.json(), indent=2)
+        except Exception as e:
+            return f"Error calling {self.name}: {str(e)}"
 
 class GetEventsTool(MCPTool):
     def __init__(self):
@@ -613,11 +632,6 @@ def main():
             else:
                 st.markdown('<p class="status-error">❌ Analysis failed</p>', unsafe_allow_html=True)
     
-    # Show verbose messages if they exist
-    if "verbose_messages" in st.session_state and st.session_state["verbose_messages"]:
-        st.subheader("🤖 Agent Activity Log")
-        for msg in st.session_state["verbose_messages"][-20:]:  # Show last 20 messages
-            st.text(msg)
     
     # Clear results
     if clear_results:
@@ -722,6 +736,12 @@ def main():
             
         else:
             st.error(f"❌ Analysis failed: {result.get('error', 'Unknown error')}")
+        
+        # Show verbose messages if they exist
+        if "verbose_messages" in st.session_state and st.session_state["verbose_messages"]:
+            st.subheader("🤖 Agent Activity Log")
+            for msg in st.session_state["verbose_messages"][-20:]:  # Show last 20 messages
+                st.text(msg)
     
     # Footer
     st.markdown("---")
