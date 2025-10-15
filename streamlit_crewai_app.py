@@ -599,16 +599,14 @@ def main():
         ### 🚀 Quick Start Guide
         
         **Step 1: Start the MCP Server**
-        ```bash
-        # In a separate terminal, run:
-        python api.py
-        ```
-        The MCP server should start on `http://127.0.0.1:8001`
+        - Check the sidebar for "🔗 MCP Server Status"
+        - If it shows "❌ MCP Server Not Running", click the "🚀 Start MCP Server" button
+        - Wait for "✅ MCP Server Connected" status
         
         **Step 2: Enter Your OpenAI API Key**
-        - Go to the sidebar (left panel)
-        - Enter your OpenAI API key in the "OpenAI API Key" field
+        - In the sidebar, enter your OpenAI API key in the "🔑 OpenAI API Key" field
         - This is required for AI-powered explanations in the analysis
+        - You'll see "✅ API Key Set" when successful
         
         **Step 3: Enter Stock Symbol**
         - In the main interface, enter a stock symbol (e.g., AAPL, MSFT, GOOGL)
@@ -635,18 +633,20 @@ def main():
         ### 🛠️ Troubleshooting
         
         **MCP Server Issues:**
-        - Ensure the MCP server is running on port 8001
-        - Check the terminal for any error messages
-        - Restart the server if needed
+        - Check the sidebar "🔗 MCP Server Status"
+        - If not connected, click "🚀 Start MCP Server" button
+        - Wait for "✅ MCP Server Connected" status before proceeding
         
         **API Key Issues:**
         - Verify your OpenAI API key is valid and has credits
+        - Check sidebar shows "✅ API Key Set"
         - The key is required for LLM explanations
         
         **Analysis Stuck:**
         - Check the Agent Activity Log for error messages
-        - Ensure all required parameters are being passed to tools
+        - Ensure MCP server is running and API key is set
         - Try a different stock symbol
+        - Use "🗑️ Clear Results" button to reset if needed
         
         ### 📊 Understanding the Output
         
