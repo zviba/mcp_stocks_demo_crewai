@@ -184,10 +184,13 @@ def start_mcp_server():
             return False
     return True
 
-def create_agents(openai_api_key: str) -> Dict[str, Agent]:
+def create_agents(openai_api_key: str, debug_callback=None) -> Dict[str, Agent]:
     """Create CrewAI agents"""
     if not CREWAI_AVAILABLE:
         return {}
+    
+    if debug_callback:
+        debug_callback("Initializing MCP tools...")
     
     # Initialize MCP tools
     search_tool = SearchSymbolsTool()
@@ -197,7 +200,13 @@ def create_agents(openai_api_key: str) -> Dict[str, Agent]:
     events_tool = GetEventsTool()
     explanation_tool = GetExplanationTool()
     
+    if debug_callback:
+        debug_callback("MCP tools initialized successfully")
+    
     # Research Agent
+    if debug_callback:
+        debug_callback("Creating Research Agent...")
+    
     research_agent = Agent(
         role="Stock Research Specialist",
         goal="Gather comprehensive basic information about stocks including current quotes, historical data, and company details",
@@ -209,7 +218,13 @@ def create_agents(openai_api_key: str) -> Dict[str, Agent]:
         allow_delegation=False
     )
     
+    if debug_callback:
+        debug_callback("Research Agent created successfully")
+    
     # Technical Analyst
+    if debug_callback:
+        debug_callback("Creating Technical Agent...")
+    
     technical_agent = Agent(
         role="Technical Analysis Expert",
         goal="Perform detailed technical analysis using indicators, patterns, and market events to assess stock momentum and trends",
@@ -221,7 +236,13 @@ def create_agents(openai_api_key: str) -> Dict[str, Agent]:
         allow_delegation=False
     )
     
+    if debug_callback:
+        debug_callback("Technical Agent created successfully")
+    
     # Report Writer
+    if debug_callback:
+        debug_callback("Creating Report Agent...")
+    
     report_agent = Agent(
         role="Financial Report Writer",
         goal="Create comprehensive, well-structured investment reports that synthesize research and technical analysis into actionable insights",
@@ -233,16 +254,22 @@ def create_agents(openai_api_key: str) -> Dict[str, Agent]:
         allow_delegation=False
     )
     
+    if debug_callback:
+        debug_callback("Report Agent created successfully")
+    
     return {
         "research": research_agent,
         "technical": technical_agent,
         "report": report_agent
     }
 
-def create_tasks(symbol: str, openai_api_key: str) -> List[Task]:
+def create_tasks(symbol: str, openai_api_key: str, debug_callback=None) -> List[Task]:
     """Create CrewAI tasks"""
     if not CREWAI_AVAILABLE:
         return []
+    
+    if debug_callback:
+        debug_callback("Creating Research Task...")
     
     # Research Task
     research_task = Task(
@@ -260,6 +287,12 @@ def create_tasks(symbol: str, openai_api_key: str) -> List[Task]:
         agent=None,
         tools=[SearchSymbolsTool(), GetQuoteTool(), GetPriceSeriesTool()]
     )
+    
+    if debug_callback:
+        debug_callback("Research Task created successfully")
+    
+    if debug_callback:
+        debug_callback("Creating Technical Analysis Task...")
     
     # Technical Analysis Task
     technical_task = Task(
@@ -279,6 +312,12 @@ def create_tasks(symbol: str, openai_api_key: str) -> List[Task]:
         tools=[GetIndicatorsTool(), GetEventsTool(), GetExplanationTool()],
         context=[research_task]
     )
+    
+    if debug_callback:
+        debug_callback("Technical Analysis Task created successfully")
+    
+    if debug_callback:
+        debug_callback("Creating Report Task...")
     
     # Report Task
     report_task = Task(
@@ -301,6 +340,9 @@ def create_tasks(symbol: str, openai_api_key: str) -> List[Task]:
         context=[research_task, technical_task]
     )
     
+    if debug_callback:
+        debug_callback("Report Task created successfully")
+    
     return [research_task, technical_task, report_task]
 
 def run_crewai_analysis(symbol: str, openai_api_key: str, progress_callback=None, debug_callback=None) -> Dict[str, Any]:
@@ -315,7 +357,7 @@ def run_crewai_analysis(symbol: str, openai_api_key: str, progress_callback=None
         
         if debug_callback:
             debug_callback(f"Creating agents for symbol {symbol}")
-        agents = create_agents(openai_api_key)
+        agents = create_agents(openai_api_key, debug_callback)
         if debug_callback:
             debug_callback(f"Created {len(agents)} agents")
         
@@ -325,23 +367,25 @@ def run_crewai_analysis(symbol: str, openai_api_key: str, progress_callback=None
         
         if debug_callback:
             debug_callback(f"Creating tasks for symbol {symbol}")
-        tasks = create_tasks(symbol, openai_api_key)
+        tasks = create_tasks(symbol, openai_api_key, debug_callback)
         if debug_callback:
             debug_callback(f"Created {len(tasks)} tasks")
         
         # Assign agents to tasks
+        if debug_callback:
+            debug_callback("Assigning agents to tasks...")
         tasks[0].agent = agents["research"]
         tasks[1].agent = agents["technical"]
         tasks[2].agent = agents["report"]
         if debug_callback:
-            debug_callback("Assigned agents to tasks")
+            debug_callback("Agents assigned to tasks successfully")
         
         # Create crew
         if progress_callback:
             progress_callback("👥 Assembling analysis crew...", 10)
         
         if debug_callback:
-            debug_callback("Creating crew")
+            debug_callback("Creating crew...")
         crew = Crew(
             agents=list(agents.values()),
             tasks=tasks,
@@ -379,7 +423,15 @@ def run_crewai_analysis(symbol: str, openai_api_key: str, progress_callback=None
                 debug_callback(f"MCP server test failed: {str(e)}")
             raise Exception(f"MCP server is not responding: {str(e)}")
         
+        # Set OpenAI API key as environment variable for CrewAI
+        if debug_callback:
+            debug_callback(f"Setting OpenAI API key (length: {len(openai_api_key)})")
+        import os
+        os.environ["OPENAI_API_KEY"] = openai_api_key
+        
         # Execute the crew workflow
+        if debug_callback:
+            debug_callback("Executing crew.kickoff()...")
         result = crew.kickoff()
         if debug_callback:
             debug_callback("Crew execution completed")
