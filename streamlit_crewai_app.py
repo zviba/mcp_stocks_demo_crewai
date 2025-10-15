@@ -429,12 +429,33 @@ def run_crewai_analysis(symbol: str, openai_api_key: str, progress_callback=None
         import os
         os.environ["OPENAI_API_KEY"] = openai_api_key
         
-        # Execute the crew workflow
+        # Execute the crew workflow with timeout
         if debug_callback:
             debug_callback("Executing crew.kickoff()...")
-        result = crew.kickoff()
-        if debug_callback:
-            debug_callback("Crew execution completed")
+        
+        # Add timeout protection for crew execution
+        import signal
+        import threading
+        
+        def timeout_handler():
+            if debug_callback:
+                debug_callback("Crew execution timed out after 2 minutes!")
+            raise TimeoutError("Crew execution timed out")
+        
+        # Set up timeout
+        timer = threading.Timer(120.0, timeout_handler)  # 2 minutes timeout
+        timer.start()
+        
+        try:
+            result = crew.kickoff()
+            timer.cancel()  # Cancel timeout if successful
+            if debug_callback:
+                debug_callback("Crew execution completed successfully")
+        except Exception as e:
+            timer.cancel()  # Cancel timeout on error
+            if debug_callback:
+                debug_callback(f"Crew execution failed: {str(e)}")
+            raise e
         
         # Final completion message
         if progress_callback:
@@ -585,11 +606,13 @@ def main():
         clear_results = st.button("🗑️ Clear Results", use_container_width=True)
     
     with col3:
-        col3a, col3b = st.columns(2)
+        col3a, col3b, col3c = st.columns(3)
         with col3a:
-            test_mcp = st.button("🧪 Test MCP Tools", use_container_width=True)
+            test_mcp = st.button("🧪 Test MCP", use_container_width=True)
         with col3b:
             test_agents = st.button("🤖 Test Agents", use_container_width=True)
+        with col3c:
+            test_crew = st.button("👥 Test Crew", use_container_width=True)
         if st.session_state.get("analysis_running", False):
             st.markdown('<p class="status-warning">⏳ Analysis in progress...</p>', unsafe_allow_html=True)
     
@@ -676,6 +699,110 @@ def main():
             
         except Exception as e:
             st.error(f"❌ Agent creation failed: {str(e)}")
+            import traceback
+            st.text(f"Full error: {traceback.format_exc()}")
+    
+    # Test crew creation and execution
+    if test_crew and symbol and openai_api_key:
+        st.info("👥 Testing crew creation and execution...")
+        
+        # Create debug log container
+        debug_container = st.container()
+        
+        with debug_container:
+            st.subheader("🔍 Debug Log")
+            debug_placeholder = st.empty()
+        
+        # Store debug messages in session state
+        def debug_callback(message):
+            if "debug_messages" not in st.session_state:
+                st.session_state["debug_messages"] = []
+            st.session_state["debug_messages"].append(f"[{datetime.now().strftime('%H:%M:%S')}] {message}")
+            # Keep only last 20 messages
+            if len(st.session_state["debug_messages"]) > 20:
+                st.session_state["debug_messages"] = st.session_state["debug_messages"][-20:]
+            
+            # Update debug placeholder in real-time
+            with debug_placeholder.container():
+                for msg in st.session_state["debug_messages"][-10:]:  # Show last 10 messages
+                    st.text(msg)
+            
+            # Add a small delay to make it readable
+            time.sleep(1.0)
+        
+        try:
+            # Create agents and tasks
+            agents = create_agents(openai_api_key, debug_callback)
+            tasks = create_tasks(symbol, openai_api_key, debug_callback)
+            
+            # Assign agents to tasks
+            if debug_callback:
+                debug_callback("Assigning agents to tasks...")
+            tasks[0].agent = agents["research"]
+            tasks[1].agent = agents["technical"]
+            tasks[2].agent = agents["report"]
+            if debug_callback:
+                debug_callback("Agents assigned to tasks successfully")
+            
+            # Create crew
+            if debug_callback:
+                debug_callback("Creating crew...")
+            crew = Crew(
+                agents=list(agents.values()),
+                tasks=tasks,
+                process=Process.sequential,
+                verbose=True
+            )
+            if debug_callback:
+                debug_callback("Crew created successfully")
+            
+            # Test MCP server connectivity
+            if debug_callback:
+                debug_callback("Testing MCP server connectivity...")
+            test_response = requests.get(f"{MCP_SERVER_URL}/health", timeout=5)
+            if test_response.status_code == 200:
+                if debug_callback:
+                    debug_callback("MCP server is responding")
+            else:
+                if debug_callback:
+                    debug_callback(f"MCP server returned status {test_response.status_code}")
+            
+            # Set OpenAI API key
+            if debug_callback:
+                debug_callback(f"Setting OpenAI API key (length: {len(openai_api_key)})")
+            import os
+            os.environ["OPENAI_API_KEY"] = openai_api_key
+            
+            # Execute crew with timeout
+            if debug_callback:
+                debug_callback("Executing crew.kickoff()...")
+            
+            import threading
+            
+            def timeout_handler():
+                if debug_callback:
+                    debug_callback("Crew execution timed out after 1 minute!")
+                raise TimeoutError("Crew execution timed out")
+            
+            # Set up timeout
+            timer = threading.Timer(60.0, timeout_handler)  # 1 minute timeout for testing
+            timer.start()
+            
+            try:
+                result = crew.kickoff()
+                timer.cancel()  # Cancel timeout if successful
+                if debug_callback:
+                    debug_callback("Crew execution completed successfully")
+                st.success("✅ Crew execution completed successfully!")
+                st.text_area("Result Preview", str(result)[:500] + "...", height=200)
+            except Exception as e:
+                timer.cancel()  # Cancel timeout on error
+                if debug_callback:
+                    debug_callback(f"Crew execution failed: {str(e)}")
+                raise e
+            
+        except Exception as e:
+            st.error(f"❌ Crew test failed: {str(e)}")
             import traceback
             st.text(f"Full error: {traceback.format_exc()}")
     
