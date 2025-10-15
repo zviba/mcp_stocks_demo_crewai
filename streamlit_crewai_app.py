@@ -315,7 +315,7 @@ def create_tasks(symbol: str, openai_api_key: str) -> List[Task]:
     
     return [research_task, technical_task, report_task]
 
-def run_crewai_analysis(symbol: str, openai_api_key: str, progress_callback=None) -> Dict[str, Any]:
+def run_crewai_analysis(symbol: str, openai_api_key: str, progress_callback=None, verbose_callback=None) -> Dict[str, Any]:
     """Run CrewAI analysis with progress tracking"""
     if not CREWAI_AVAILABLE:
         return {"error": "CrewAI not available"}
@@ -324,23 +324,35 @@ def run_crewai_analysis(symbol: str, openai_api_key: str, progress_callback=None
         # Create agents
         if progress_callback:
             progress_callback("🔧 Creating specialized agents...", 5)
+        if verbose_callback:
+            verbose_callback("Initializing specialized AI agents for stock analysis...")
         
         agents = create_agents(openai_api_key)
+        if verbose_callback:
+            verbose_callback(f"Created {len(agents)} specialized agents: Research, Technical Analysis, and Report Writing")
         
         # Create tasks
         if progress_callback:
             progress_callback("📋 Setting up analysis tasks...", 8)
+        if verbose_callback:
+            verbose_callback("Setting up analysis workflow tasks...")
         
         tasks = create_tasks(symbol, openai_api_key)
+        if verbose_callback:
+            verbose_callback(f"Created {len(tasks)} analysis tasks for symbol {symbol}")
         
         # Assign agents to tasks
         tasks[0].agent = agents["research"]
         tasks[1].agent = agents["technical"]
         tasks[2].agent = agents["report"]
+        if verbose_callback:
+            verbose_callback("Assigned agents to their respective tasks")
         
         # Create crew
         if progress_callback:
             progress_callback("👥 Assembling analysis crew...", 10)
+        if verbose_callback:
+            verbose_callback("Assembling collaborative AI crew for sequential analysis...")
         
         crew = Crew(
             agents=list(agents.values()),
@@ -348,6 +360,8 @@ def run_crewai_analysis(symbol: str, openai_api_key: str, progress_callback=None
             process=Process.sequential,
             verbose=True  # Enable verbose output for the crew
         )
+        if verbose_callback:
+            verbose_callback("Crew assembled successfully - ready to begin analysis")
         
         # Execute analysis with detailed progress tracking
         if progress_callback:
@@ -360,26 +374,38 @@ def run_crewai_analysis(symbol: str, openai_api_key: str, progress_callback=None
         # Test MCP server connectivity before starting crew
         if progress_callback:
             progress_callback("🔍 Testing MCP server connectivity...", 15)
+        if verbose_callback:
+            verbose_callback("Testing MCP server connectivity for data access...")
         
         try:
             test_response = requests.get(f"{MCP_SERVER_URL}/health", timeout=5)
             if test_response.status_code != 200:
                 raise Exception(f"MCP server returned status {test_response.status_code}")
+            if verbose_callback:
+                verbose_callback("✅ MCP server is responding - data access confirmed")
         except Exception as e:
+            if verbose_callback:
+                verbose_callback(f"❌ MCP server connectivity failed: {str(e)}")
             raise Exception(f"MCP server is not responding: {str(e)}")
         
         # Set OpenAI API key as environment variable for CrewAI
         import os
         os.environ["OPENAI_API_KEY"] = openai_api_key
+        if verbose_callback:
+            verbose_callback("OpenAI API key configured for LLM operations")
         
         # Execute the crew workflow with timeout
         if progress_callback:
             progress_callback("📊 Executing crew workflow...", 20)
+        if verbose_callback:
+            verbose_callback("🚀 Starting crew execution - agents will now begin their analysis...")
         
         # Add timeout protection for crew execution
         import threading
         
         def timeout_handler():
+            if verbose_callback:
+                verbose_callback("⏰ Crew execution timed out after 2 minutes")
             raise TimeoutError("Crew execution timed out")
         
         # Set up timeout
@@ -389,8 +415,12 @@ def run_crewai_analysis(symbol: str, openai_api_key: str, progress_callback=None
         try:
             result = crew.kickoff()
             timer.cancel()  # Cancel timeout if successful
+            if verbose_callback:
+                verbose_callback("✅ Crew execution completed successfully - analysis finished")
         except Exception as e:
             timer.cancel()  # Cancel timeout on error
+            if verbose_callback:
+                verbose_callback(f"❌ Crew execution failed: {str(e)}")
             raise e
         
         # Final completion message
@@ -548,7 +578,7 @@ def main():
     
     # Clear results
     if clear_results:
-        for key in ["analysis_result", "analysis_running", "analysis_progress", "debug_messages"]:
+        for key in ["analysis_result", "analysis_running", "analysis_progress", "debug_messages", "verbose_messages"]:
             if key in st.session_state:
                 del st.session_state[key]
         st.rerun()
@@ -566,6 +596,10 @@ def main():
             progress_bar = st.progress(0)
             status_text = st.empty()
             progress_percentage = st.empty()
+            
+            # Add verbose output section
+            st.subheader("🤖 Agent Activity Log")
+            verbose_container = st.empty()
         
         # Progress callback with percentage tracking
         def update_progress(message, percentage=None):
@@ -574,9 +608,23 @@ def main():
                 progress_bar.progress(percentage)
                 progress_percentage.text(f"Progress: {percentage:.0f}%")
         
+        # Verbose callback to capture agent activities
+        def verbose_callback(message):
+            if "verbose_messages" not in st.session_state:
+                st.session_state["verbose_messages"] = []
+            st.session_state["verbose_messages"].append(f"[{datetime.now().strftime('%H:%M:%S')}] {message}")
+            # Keep only last 50 messages
+            if len(st.session_state["verbose_messages"]) > 50:
+                st.session_state["verbose_messages"] = st.session_state["verbose_messages"][-50:]
+            
+            # Update verbose container in real-time
+            with verbose_container.container():
+                for msg in st.session_state["verbose_messages"][-20:]:  # Show last 20 messages
+                    st.text(msg)
+        
         # Run analysis directly (no threading for now)
         try:
-            result = run_crewai_analysis(symbol, openai_api_key, update_progress)
+            result = run_crewai_analysis(symbol, openai_api_key, update_progress, verbose_callback)
             
             # Store in session state
             st.session_state["analysis_result"] = result
