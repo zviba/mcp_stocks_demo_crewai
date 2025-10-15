@@ -192,7 +192,7 @@ def create_agents(openai_api_key: str) -> Dict[str, Agent]:
         Your expertise lies in efficiently gathering and organizing stock data from multiple sources. 
         You excel at finding relevant information quickly and presenting it in a clear, structured format.""",
         tools=[search_tool, quote_tool, series_tool],
-        verbose=False,
+        verbose=True,  # Enable verbose output
         allow_delegation=False
     )
     
@@ -204,7 +204,7 @@ def create_agents(openai_api_key: str) -> Dict[str, Agent]:
         You specialize in interpreting technical signals, identifying patterns, and understanding market psychology. 
         Your analysis is methodical and based on proven technical analysis principles.""",
         tools=[indicators_tool, events_tool, explanation_tool],
-        verbose=False,
+        verbose=True,  # Enable verbose output
         allow_delegation=False
     )
     
@@ -216,7 +216,7 @@ def create_agents(openai_api_key: str) -> Dict[str, Agent]:
         actionable reports. You have a talent for presenting technical information in an accessible way while maintaining 
         accuracy and professional standards. Your reports are known for their clarity and practical insights.""",
         tools=[],
-        verbose=False,
+        verbose=True,  # Enable verbose output
         allow_delegation=False
     )
     
@@ -298,13 +298,13 @@ def run_crewai_analysis(symbol: str, openai_api_key: str, progress_callback=None
     try:
         # Create agents
         if progress_callback:
-            progress_callback("Creating specialized agents...")
+            progress_callback("🔧 Creating specialized agents...", 5)
         
         agents = create_agents(openai_api_key)
         
         # Create tasks
         if progress_callback:
-            progress_callback("Setting up analysis tasks...")
+            progress_callback("📋 Setting up analysis tasks...", 8)
         
         tasks = create_tasks(symbol, openai_api_key)
         
@@ -315,26 +315,51 @@ def run_crewai_analysis(symbol: str, openai_api_key: str, progress_callback=None
         
         # Create crew
         if progress_callback:
-            progress_callback("Assembling analysis crew...")
+            progress_callback("👥 Assembling analysis crew...", 10)
         
         crew = Crew(
             agents=list(agents.values()),
             tasks=tasks,
             process=Process.sequential,
-            verbose=False
+            verbose=True  # Enable verbose output for the crew
         )
         
-        # Execute analysis
+        # Execute analysis with detailed progress tracking
         if progress_callback:
-            progress_callback("Starting comprehensive analysis...")
+            progress_callback("🚀 Starting comprehensive analysis...", 10)
         
-        result = crew.kickoff()
+        # Track individual task progress
+        task_names = ["Research", "Technical Analysis", "Report Writing"]
+        
+        # Execute tasks sequentially with progress updates
+        results = []
+        for i, task in enumerate(tasks):
+            task_start_percentage = 20 + (i * 25)
+            task_end_percentage = 20 + ((i + 1) * 25)
+            
+            if progress_callback:
+                progress_callback(f"📊 Running {task_names[i]} task...", task_start_percentage)
+            
+            # Execute individual task
+            task_result = task.execute()
+            results.append(task_result)
+            
+            if progress_callback:
+                progress_callback(f"✅ Completed {task_names[i]} task", task_end_percentage)
+        
+        # Combine results
+        final_result = "\n\n".join([str(result) for result in results])
+        
+        # Final completion message
+        if progress_callback:
+            progress_callback("🎉 Analysis completed successfully!", 100)
         
         return {
             "success": True,
-            "result": str(result),
+            "result": final_result,
             "timestamp": datetime.now().isoformat(),
-            "symbol": symbol
+            "symbol": symbol,
+            "task_results": results
         }
         
     except Exception as e:
@@ -493,11 +518,15 @@ def main():
             st.subheader("📊 Analysis Progress")
             progress_bar = st.progress(0)
             status_text = st.empty()
+            progress_percentage = st.empty()
         
-        # Progress callback
-        def update_progress(message):
+        # Progress callback with percentage tracking
+        def update_progress(message, percentage=None):
             st.session_state["analysis_progress"] = message
             status_text.text(message)
+            if percentage is not None:
+                progress_bar.progress(percentage)
+                progress_percentage.text(f"Progress: {percentage:.0f}%")
         
         # Run analysis in thread
         def run_analysis_thread():
@@ -521,10 +550,34 @@ def main():
         analysis_thread.daemon = True
         analysis_thread.start()
         
-        # Show progress
+        # Show progress with more detailed information
         progress_placeholder = st.empty()
+        progress_details = st.empty()
+        
         while st.session_state.get("analysis_running", False):
-            progress_placeholder.text(f"Status: {st.session_state.get('analysis_progress', 'Running...')}")
+            current_progress = st.session_state.get('analysis_progress', 'Running...')
+            progress_placeholder.text(f"Status: {current_progress}")
+            
+            # Show additional progress details
+            if "Creating" in current_progress:
+                progress_details.info("🔧 Initializing AI agents with specialized roles...")
+            elif "Setting up" in current_progress:
+                progress_details.info("📋 Configuring analysis tasks and workflows...")
+            elif "Assembling" in current_progress:
+                progress_details.info("👥 Organizing agents into collaborative crew...")
+            elif "Starting" in current_progress:
+                progress_details.info("🚀 Launching comprehensive stock analysis...")
+            elif "Research" in current_progress:
+                progress_details.info("🔍 Research Agent: Gathering stock data and company information...")
+            elif "Technical Analysis" in current_progress:
+                progress_details.info("📈 Technical Agent: Analyzing indicators, patterns, and market events...")
+            elif "Report Writing" in current_progress:
+                progress_details.info("📝 Report Agent: Synthesizing findings into comprehensive report...")
+            elif "Completed" in current_progress:
+                progress_details.success(f"✅ {current_progress}")
+            elif "Analysis completed" in current_progress:
+                progress_details.success("🎉 All tasks completed successfully!")
+            
             time.sleep(1)
         
         # Clear progress and show results
