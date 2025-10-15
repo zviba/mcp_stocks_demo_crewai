@@ -290,7 +290,7 @@ def create_tasks(symbol: str, openai_api_key: str) -> List[Task]:
     
     return [research_task, technical_task, report_task]
 
-def run_crewai_analysis(symbol: str, openai_api_key: str, progress_callback=None) -> Dict[str, Any]:
+def run_crewai_analysis(symbol: str, openai_api_key: str, progress_callback=None, debug_callback=None) -> Dict[str, Any]:
     """Run CrewAI analysis with progress tracking"""
     if not CREWAI_AVAILABLE:
         return {"error": "CrewAI not available"}
@@ -300,36 +300,43 @@ def run_crewai_analysis(symbol: str, openai_api_key: str, progress_callback=None
         if progress_callback:
             progress_callback("🔧 Creating specialized agents...", 5)
         
-        print(f"DEBUG: Creating agents for symbol {symbol}")
+        if debug_callback:
+            debug_callback(f"Creating agents for symbol {symbol}")
         agents = create_agents(openai_api_key)
-        print(f"DEBUG: Created {len(agents)} agents")
+        if debug_callback:
+            debug_callback(f"Created {len(agents)} agents")
         
         # Create tasks
         if progress_callback:
             progress_callback("📋 Setting up analysis tasks...", 8)
         
-        print(f"DEBUG: Creating tasks for symbol {symbol}")
+        if debug_callback:
+            debug_callback(f"Creating tasks for symbol {symbol}")
         tasks = create_tasks(symbol, openai_api_key)
-        print(f"DEBUG: Created {len(tasks)} tasks")
+        if debug_callback:
+            debug_callback(f"Created {len(tasks)} tasks")
         
         # Assign agents to tasks
         tasks[0].agent = agents["research"]
         tasks[1].agent = agents["technical"]
         tasks[2].agent = agents["report"]
-        print("DEBUG: Assigned agents to tasks")
+        if debug_callback:
+            debug_callback("Assigned agents to tasks")
         
         # Create crew
         if progress_callback:
             progress_callback("👥 Assembling analysis crew...", 10)
         
-        print("DEBUG: Creating crew")
+        if debug_callback:
+            debug_callback("Creating crew")
         crew = Crew(
             agents=list(agents.values()),
             tasks=tasks,
             process=Process.sequential,
             verbose=True  # Enable verbose output for the crew
         )
-        print("DEBUG: Crew created successfully")
+        if debug_callback:
+            debug_callback("Crew created successfully")
         
         # Execute analysis with detailed progress tracking
         if progress_callback:
@@ -339,7 +346,8 @@ def run_crewai_analysis(symbol: str, openai_api_key: str, progress_callback=None
         if progress_callback:
             progress_callback("📊 Executing crew workflow...", 20)
         
-        print("DEBUG: Starting crew execution")
+        if debug_callback:
+            debug_callback("Starting crew execution")
         
         # Test MCP server connectivity before starting crew
         if progress_callback:
@@ -348,16 +356,20 @@ def run_crewai_analysis(symbol: str, openai_api_key: str, progress_callback=None
         try:
             test_response = requests.get(f"{MCP_SERVER_URL}/health", timeout=5)
             if test_response.status_code == 200:
-                print("DEBUG: MCP server is responding")
+                if debug_callback:
+                    debug_callback("MCP server is responding")
             else:
-                print(f"DEBUG: MCP server returned status {test_response.status_code}")
+                if debug_callback:
+                    debug_callback(f"MCP server returned status {test_response.status_code}")
         except Exception as e:
-            print(f"DEBUG: MCP server test failed: {str(e)}")
+            if debug_callback:
+                debug_callback(f"MCP server test failed: {str(e)}")
             raise Exception(f"MCP server is not responding: {str(e)}")
         
         # Execute the crew workflow
         result = crew.kickoff()
-        print("DEBUG: Crew execution completed")
+        if debug_callback:
+            debug_callback("Crew execution completed")
         
         # Final completion message
         if progress_callback:
@@ -371,9 +383,11 @@ def run_crewai_analysis(symbol: str, openai_api_key: str, progress_callback=None
         }
         
     except Exception as e:
-        print(f"DEBUG: Error in run_crewai_analysis: {str(e)}")
+        if debug_callback:
+            debug_callback(f"Error in run_crewai_analysis: {str(e)}")
         import traceback
-        traceback.print_exc()
+        if debug_callback:
+            debug_callback(f"Traceback: {traceback.format_exc()}")
         return {
             "success": False,
             "error": str(e),
@@ -512,7 +526,7 @@ def main():
     
     # Clear results
     if clear_results:
-        for key in ["analysis_result", "analysis_running", "analysis_progress"]:
+        for key in ["analysis_result", "analysis_running", "analysis_progress", "debug_messages"]:
             if key in st.session_state:
                 del st.session_state[key]
         st.rerun()
@@ -536,12 +550,8 @@ def main():
     
     # Run analysis
     if run_analysis and symbol and openai_api_key:
-        st.session_state["analysis_running"] = True
-        st.session_state["analysis_progress"] = "Initializing..."
-        
         # Create progress container
         progress_container = st.container()
-        result_container = st.container()
         
         with progress_container:
             st.subheader("📊 Analysis Progress")
@@ -551,90 +561,40 @@ def main():
         
         # Progress callback with percentage tracking
         def update_progress(message, percentage=None):
-            st.session_state["analysis_progress"] = message
             status_text.text(message)
             if percentage is not None:
                 progress_bar.progress(percentage)
                 progress_percentage.text(f"Progress: {percentage:.0f}%")
+            st.rerun()
         
-        # Run analysis in thread with timeout protection
-        def run_analysis_thread():
-            try:
-                # Set a timeout for the analysis (5 minutes)
-                import signal
-                
-                def timeout_handler(signum, frame):
-                    raise TimeoutError("Analysis timed out after 5 minutes")
-                
-                # Set timeout (Unix systems only)
-                if hasattr(signal, 'SIGALRM'):
-                    signal.signal(signal.SIGALRM, timeout_handler)
-                    signal.alarm(300)  # 5 minutes timeout
-                
-                result = run_crewai_analysis(symbol, openai_api_key, update_progress)
-                
-                # Cancel timeout
-                if hasattr(signal, 'SIGALRM'):
-                    signal.alarm(0)
-                
-                st.session_state["analysis_result"] = result
-                st.session_state["analysis_running"] = False
-                st.session_state["analysis_progress"] = "Analysis complete!"
-            except TimeoutError as e:
-                st.session_state["analysis_result"] = {
-                    "success": False,
-                    "error": f"Analysis timed out: {str(e)}",
-                    "timestamp": datetime.now().isoformat(),
-                    "symbol": symbol
-                }
-                st.session_state["analysis_running"] = False
-                st.session_state["analysis_progress"] = "Analysis timed out!"
-            except Exception as e:
-                st.session_state["analysis_result"] = {
-                    "success": False,
-                    "error": str(e),
-                    "timestamp": datetime.now().isoformat(),
-                    "symbol": symbol
-                }
-                st.session_state["analysis_running"] = False
-                st.session_state["analysis_progress"] = "Analysis failed!"
+        # Store debug messages in session state
+        def debug_callback(message):
+            if "debug_messages" not in st.session_state:
+                st.session_state["debug_messages"] = []
+            st.session_state["debug_messages"].append(f"[{datetime.now().strftime('%H:%M:%S')}] {message}")
+            # Keep only last 20 messages
+            if len(st.session_state["debug_messages"]) > 20:
+                st.session_state["debug_messages"] = st.session_state["debug_messages"][-20:]
         
-        # Start analysis thread
-        analysis_thread = threading.Thread(target=run_analysis_thread)
-        analysis_thread.daemon = True
-        analysis_thread.start()
+        # Show debug messages
+        if "debug_messages" in st.session_state and st.session_state["debug_messages"]:
+            st.subheader("🔍 Debug Log")
+            for msg in st.session_state["debug_messages"][-10:]:  # Show last 10 messages
+                st.text(msg)
         
-        # Show progress with more detailed information
-        progress_placeholder = st.empty()
-        progress_details = st.empty()
+        # Run analysis directly (no threading for now)
+        try:
+            result = run_crewai_analysis(symbol, openai_api_key, update_progress, debug_callback)
+            st.session_state["analysis_result"] = result
+        except Exception as e:
+            st.session_state["analysis_result"] = {
+                "success": False,
+                "error": str(e),
+                "timestamp": datetime.now().isoformat(),
+                "symbol": symbol
+            }
         
-        while st.session_state.get("analysis_running", False):
-            current_progress = st.session_state.get('analysis_progress', 'Running...')
-            progress_placeholder.text(f"Status: {current_progress}")
-            
-            # Show additional progress details
-            if "Creating" in current_progress:
-                progress_details.info("🔧 Initializing AI agents with specialized roles...")
-            elif "Setting up" in current_progress:
-                progress_details.info("📋 Configuring analysis tasks and workflows...")
-            elif "Assembling" in current_progress:
-                progress_details.info("👥 Organizing agents into collaborative crew...")
-            elif "Starting" in current_progress:
-                progress_details.info("🚀 Launching comprehensive stock analysis...")
-            elif "Research" in current_progress:
-                progress_details.info("🔍 Research Agent: Gathering stock data and company information...")
-            elif "Technical Analysis" in current_progress:
-                progress_details.info("📈 Technical Agent: Analyzing indicators, patterns, and market events...")
-            elif "Report Writing" in current_progress:
-                progress_details.info("📝 Report Agent: Synthesizing findings into comprehensive report...")
-            elif "Completed" in current_progress:
-                progress_details.success(f"✅ {current_progress}")
-            elif "Analysis completed" in current_progress:
-                progress_details.success("🎉 All tasks completed successfully!")
-            
-            time.sleep(1)
-        
-        # Clear progress and show results
+        # Clear progress container
         progress_container.empty()
         st.rerun()
     
