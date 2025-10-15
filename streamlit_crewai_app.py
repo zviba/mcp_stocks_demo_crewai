@@ -28,6 +28,13 @@ except ImportError:
     CREWAI_AVAILABLE = False
     st.error("CrewAI not installed. Please run: pip install crewai")
 
+# Fallback BaseTool class if CrewAI is not available
+if not CREWAI_AVAILABLE:
+    class BaseTool:
+        def __init__(self, name: str, description: str):
+            self.name = name
+            self.description = description
+
 # MCP Server Configuration
 MCP_SERVER_URL = "http://127.0.0.1:8001"
 
@@ -76,8 +83,8 @@ class MCPTool(BaseTool):
     """Base class for MCP server tools"""
     
     def __init__(self, endpoint: str, name: str, description: str):
-        self.endpoint = endpoint
         super().__init__(name=name, description=description)
+        self.endpoint = endpoint
     
     def _run(self, **kwargs) -> str:
         """Execute the MCP tool via HTTP request"""
@@ -535,18 +542,39 @@ def main():
     if test_mcp and symbol:
         st.info("🧪 Testing MCP tools...")
         try:
-            # Test search
+            # Test direct API call first
+            st.write("Testing direct API call...")
+            response = requests.post(
+                f"{MCP_SERVER_URL}/search",
+                json={"q": symbol},
+                timeout=10,
+                headers={"Content-Type": "application/json"}
+            )
+            if response.status_code == 200:
+                st.success(f"✅ Direct API call working: {response.json()[:100]}...")
+            else:
+                st.error(f"❌ Direct API call failed: {response.status_code}")
+            
+            # Test search tool
+            st.write("Testing SearchSymbolsTool...")
             search_tool = SearchSymbolsTool()
-            search_result = search_tool._run(query=symbol)
+            st.write(f"Debug: Search tool attributes = {dir(search_tool)}")
+            st.write(f"Debug: Search tool endpoint = {getattr(search_tool, 'endpoint', 'NOT FOUND')}")
+            st.write(f"Debug: Search tool name = {getattr(search_tool, 'name', 'NOT FOUND')}")
+            search_result = search_tool._run(q=symbol)  # Use 'q' parameter as expected by API
             st.success(f"✅ Search tool working: {search_result[:100]}...")
             
             # Test quote
+            st.write("Testing GetQuoteTool...")
             quote_tool = GetQuoteTool()
+            st.write(f"Debug: Quote tool endpoint = {getattr(quote_tool, 'endpoint', 'NOT FOUND')}")
             quote_result = quote_tool._run(symbol=symbol)
             st.success(f"✅ Quote tool working: {quote_result[:100]}...")
             
         except Exception as e:
             st.error(f"❌ MCP tool test failed: {str(e)}")
+            import traceback
+            st.text(f"Full error: {traceback.format_exc()}")
     
     # Run analysis
     if run_analysis and symbol and openai_api_key:
