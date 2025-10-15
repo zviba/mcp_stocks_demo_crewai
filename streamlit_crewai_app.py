@@ -300,55 +300,64 @@ def run_crewai_analysis(symbol: str, openai_api_key: str, progress_callback=None
         if progress_callback:
             progress_callback("🔧 Creating specialized agents...", 5)
         
+        print(f"DEBUG: Creating agents for symbol {symbol}")
         agents = create_agents(openai_api_key)
+        print(f"DEBUG: Created {len(agents)} agents")
         
         # Create tasks
         if progress_callback:
             progress_callback("📋 Setting up analysis tasks...", 8)
         
+        print(f"DEBUG: Creating tasks for symbol {symbol}")
         tasks = create_tasks(symbol, openai_api_key)
+        print(f"DEBUG: Created {len(tasks)} tasks")
         
         # Assign agents to tasks
         tasks[0].agent = agents["research"]
         tasks[1].agent = agents["technical"]
         tasks[2].agent = agents["report"]
+        print("DEBUG: Assigned agents to tasks")
         
         # Create crew
         if progress_callback:
             progress_callback("👥 Assembling analysis crew...", 10)
         
+        print("DEBUG: Creating crew")
         crew = Crew(
             agents=list(agents.values()),
             tasks=tasks,
             process=Process.sequential,
             verbose=True  # Enable verbose output for the crew
         )
+        print("DEBUG: Crew created successfully")
         
         # Execute analysis with detailed progress tracking
         if progress_callback:
             progress_callback("🚀 Starting comprehensive analysis...", 10)
         
-        # Track individual task progress
-        task_names = ["Research", "Technical Analysis", "Report Writing"]
+        # Use Crew's built-in execution instead of individual task execution
+        if progress_callback:
+            progress_callback("📊 Executing crew workflow...", 20)
         
-        # Execute tasks sequentially with progress updates
-        results = []
-        for i, task in enumerate(tasks):
-            task_start_percentage = 20 + (i * 25)
-            task_end_percentage = 20 + ((i + 1) * 25)
-            
-            if progress_callback:
-                progress_callback(f"📊 Running {task_names[i]} task...", task_start_percentage)
-            
-            # Execute individual task
-            task_result = task.execute()
-            results.append(task_result)
-            
-            if progress_callback:
-                progress_callback(f"✅ Completed {task_names[i]} task", task_end_percentage)
+        print("DEBUG: Starting crew execution")
         
-        # Combine results
-        final_result = "\n\n".join([str(result) for result in results])
+        # Test MCP server connectivity before starting crew
+        if progress_callback:
+            progress_callback("🔍 Testing MCP server connectivity...", 15)
+        
+        try:
+            test_response = requests.get(f"{MCP_SERVER_URL}/health", timeout=5)
+            if test_response.status_code == 200:
+                print("DEBUG: MCP server is responding")
+            else:
+                print(f"DEBUG: MCP server returned status {test_response.status_code}")
+        except Exception as e:
+            print(f"DEBUG: MCP server test failed: {str(e)}")
+            raise Exception(f"MCP server is not responding: {str(e)}")
+        
+        # Execute the crew workflow
+        result = crew.kickoff()
+        print("DEBUG: Crew execution completed")
         
         # Final completion message
         if progress_callback:
@@ -356,13 +365,15 @@ def run_crewai_analysis(symbol: str, openai_api_key: str, progress_callback=None
         
         return {
             "success": True,
-            "result": final_result,
+            "result": str(result),
             "timestamp": datetime.now().isoformat(),
-            "symbol": symbol,
-            "task_results": results
+            "symbol": symbol
         }
         
     except Exception as e:
+        print(f"DEBUG: Error in run_crewai_analysis: {str(e)}")
+        import traceback
+        traceback.print_exc()
         return {
             "success": False,
             "error": str(e),
@@ -495,6 +506,7 @@ def main():
         clear_results = st.button("🗑️ Clear Results", use_container_width=True)
     
     with col3:
+        test_mcp = st.button("🧪 Test MCP Tools", use_container_width=True)
         if st.session_state.get("analysis_running", False):
             st.markdown('<p class="status-warning">⏳ Analysis in progress...</p>', unsafe_allow_html=True)
     
@@ -504,6 +516,23 @@ def main():
             if key in st.session_state:
                 del st.session_state[key]
         st.rerun()
+    
+    # Test MCP tools
+    if test_mcp and symbol:
+        st.info("🧪 Testing MCP tools...")
+        try:
+            # Test search
+            search_tool = SearchSymbolsTool()
+            search_result = search_tool._run(query=symbol)
+            st.success(f"✅ Search tool working: {search_result[:100]}...")
+            
+            # Test quote
+            quote_tool = GetQuoteTool()
+            quote_result = quote_tool._run(symbol=symbol)
+            st.success(f"✅ Quote tool working: {quote_result[:100]}...")
+            
+        except Exception as e:
+            st.error(f"❌ MCP tool test failed: {str(e)}")
     
     # Run analysis
     if run_analysis and symbol and openai_api_key:
@@ -528,13 +557,38 @@ def main():
                 progress_bar.progress(percentage)
                 progress_percentage.text(f"Progress: {percentage:.0f}%")
         
-        # Run analysis in thread
+        # Run analysis in thread with timeout protection
         def run_analysis_thread():
             try:
+                # Set a timeout for the analysis (5 minutes)
+                import signal
+                
+                def timeout_handler(signum, frame):
+                    raise TimeoutError("Analysis timed out after 5 minutes")
+                
+                # Set timeout (Unix systems only)
+                if hasattr(signal, 'SIGALRM'):
+                    signal.signal(signal.SIGALRM, timeout_handler)
+                    signal.alarm(300)  # 5 minutes timeout
+                
                 result = run_crewai_analysis(symbol, openai_api_key, update_progress)
+                
+                # Cancel timeout
+                if hasattr(signal, 'SIGALRM'):
+                    signal.alarm(0)
+                
                 st.session_state["analysis_result"] = result
                 st.session_state["analysis_running"] = False
                 st.session_state["analysis_progress"] = "Analysis complete!"
+            except TimeoutError as e:
+                st.session_state["analysis_result"] = {
+                    "success": False,
+                    "error": f"Analysis timed out: {str(e)}",
+                    "timestamp": datetime.now().isoformat(),
+                    "symbol": symbol
+                }
+                st.session_state["analysis_running"] = False
+                st.session_state["analysis_progress"] = "Analysis timed out!"
             except Exception as e:
                 st.session_state["analysis_result"] = {
                     "success": False,
