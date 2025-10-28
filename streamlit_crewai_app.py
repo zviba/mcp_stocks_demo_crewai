@@ -234,14 +234,16 @@ class GetEventsTool(MCPTool):
             return f"Error calling {self.name}: {str(e)}"
 
 class GetExplanationTool(MCPTool):
-    def __init__(self):
+    def __init__(self, openai_api_key: str = ""):
         super().__init__(
             endpoint="/explain",
             name="get_explanation",
-            description="Get AI-powered explanation of technical analysis with market context. Requires symbol and openai_api_key parameters."
+            description="Get AI-powered explanation of technical analysis with market context. Requires symbol parameter."
         )
+        # Store API key as a private attribute
+        self._openai_api_key = openai_api_key
     
-    def _run(self, symbol: str, openai_api_key: str, language: str = "en", tone: str = "neutral", 
+    def _run(self, symbol: str, language: str = "en", tone: str = "neutral", 
              risk_profile: str = "balanced", horizon_days: int = 30, bullets: bool = True, **kwargs) -> str:
         """Execute the explanation tool with required parameters"""
         try:
@@ -254,7 +256,7 @@ class GetExplanationTool(MCPTool):
                     "risk_profile": risk_profile,
                     "horizon_days": horizon_days,
                     "bullets": bullets,
-                    "openai_api_key": openai_api_key
+                    "openai_api_key": self._openai_api_key
                 },
                 timeout=30,
                 headers={"Content-Type": "application/json"}
@@ -305,7 +307,7 @@ def create_agents(openai_api_key: str) -> Dict[str, Agent]:
     series_tool = GetPriceSeriesTool()
     indicators_tool = GetIndicatorsTool()
     events_tool = GetEventsTool()
-    explanation_tool = GetExplanationTool()
+    explanation_tool = GetExplanationTool(openai_api_key)
     
     # Research Agent
     research_agent = Agent(
@@ -386,7 +388,7 @@ def create_tasks(symbol: str, openai_api_key: str) -> List[Task]:
         """,
         expected_output="A detailed technical analysis report with indicator interpretations, event analysis, trend assessment, and key price levels",
         agent=None,
-        tools=[GetIndicatorsTool(), GetEventsTool(), GetExplanationTool()],
+        tools=[GetIndicatorsTool(), GetEventsTool(), GetExplanationTool(openai_api_key)],
         context=[research_task]
     )
     
@@ -466,9 +468,7 @@ def run_crewai_analysis(symbol: str, openai_api_key: str, progress_callback=None
         except Exception as e:
             raise Exception(f"MCP server is not responding: {str(e)}")
         
-        # Set OpenAI API key
-        import os
-        os.environ["OPENAI_API_KEY"] = openai_api_key
+        # Note: OpenAI API key is now passed directly to tools instead of using environment variable
         
         # Execute the crew workflow
         if progress_callback:
