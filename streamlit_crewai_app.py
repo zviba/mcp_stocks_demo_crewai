@@ -420,16 +420,27 @@ def run_crewai_analysis(symbol: str, openai_api_key: str, progress_callback=None
     if not CREWAI_AVAILABLE:
         return {"error": "CrewAI not available"}
     
-    # Store original environment variable and set the one from input field
+    # Store original environment variable
     original_api_key = os.environ.get("OPENAI_API_KEY", None)
-    if openai_api_key:
-        os.environ["OPENAI_API_KEY"] = openai_api_key
-    elif "OPENAI_API_KEY" in os.environ:
-        # If no key provided but env var exists, keep it
-        pass
-    else:
-        # If no key provided and no env var, this will fail later
-        pass
+    
+    # Validate and set API key - prioritize input field over environment variable
+    openai_api_key = openai_api_key.strip() if openai_api_key else ""
+    
+    if not openai_api_key:
+        # Check if environment variable exists as fallback
+        env_api_key = os.environ.get("OPENAI_API_KEY", "").strip()
+        if env_api_key:
+            openai_api_key = env_api_key
+        else:
+            return {
+                "success": False,
+                "error": "OpenAI API key is required. Please enter it in the sidebar.",
+                "timestamp": datetime.now().isoformat(),
+                "symbol": symbol
+            }
+    
+    # Set the environment variable with the validated key (this is what CrewAI uses)
+    os.environ["OPENAI_API_KEY"] = openai_api_key
     
     try:
         # Create agents
