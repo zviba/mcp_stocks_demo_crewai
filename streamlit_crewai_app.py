@@ -512,6 +512,7 @@ def run_crewai_analysis(symbol: str, openai_api_key: str, progress_callback=None
             # Capture stdout during crew execution
             old_stdout = sys.stdout
             old_stderr = sys.stderr
+                
             
             if verbose_callback:
                 verbose_capture = VerboseCapture(verbose_callback)
