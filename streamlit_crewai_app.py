@@ -420,6 +420,17 @@ def run_crewai_analysis(symbol: str, openai_api_key: str, progress_callback=None
     if not CREWAI_AVAILABLE:
         return {"error": "CrewAI not available"}
     
+    # Store original environment variable and set the one from input field
+    original_api_key = os.environ.get("OPENAI_API_KEY", None)
+    if openai_api_key:
+        os.environ["OPENAI_API_KEY"] = openai_api_key
+    elif "OPENAI_API_KEY" in os.environ:
+        # If no key provided but env var exists, keep it
+        pass
+    else:
+        # If no key provided and no env var, this will fail later
+        pass
+    
     try:
         # Create agents
         if progress_callback:
@@ -553,6 +564,13 @@ def run_crewai_analysis(symbol: str, openai_api_key: str, progress_callback=None
             "timestamp": datetime.now().isoformat(),
             "symbol": symbol
         }
+    finally:
+        # Restore original environment variable
+        if original_api_key is not None:
+            os.environ["OPENAI_API_KEY"] = original_api_key
+        elif "OPENAI_API_KEY" in os.environ and openai_api_key:
+            # Only remove if we set it (i.e., if openai_api_key was provided)
+            del os.environ["OPENAI_API_KEY"]
 
 def main():
     """Main Streamlit app"""
