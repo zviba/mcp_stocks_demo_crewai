@@ -8,35 +8,22 @@ view comprehensive analysis results.
 """
 
 import streamlit as st
-import json
 import os
 import sys
 import time
-import threading
 import subprocess
 import requests
 from datetime import datetime
-from typing import Dict, Any, List, Optional
-import pandas as pd
 
-# Import CrewAI components
+# Import agent functions from separate module
 try:
-    from crewai import Agent, Task, Crew, Process
-    from crewai.tools import BaseTool
-    CREWAI_AVAILABLE = True
+    from agents import run_crewai_analysis, CREWAI_AVAILABLE
 except ImportError:
     CREWAI_AVAILABLE = False
-    st.error("CrewAI not installed. Please run: pip install crewai")
-
-# Fallback BaseTool class if CrewAI is not available
-if not CREWAI_AVAILABLE:
-    class BaseTool:
-        def __init__(self, name: str, description: str):
-            self.name = name
-            self.description = description
-
-# MCP Server Configuration
-MCP_SERVER_URL = "http://127.0.0.1:8001"
+    st.error("Could not import agents module. Please ensure agents.py is in the same directory.")
+    
+    def run_crewai_analysis(*args, **kwargs):
+        return {"error": "Agents module not available"}
 
 # Page configuration
 st.set_page_config(
@@ -90,193 +77,20 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# MCP Tool Classes (same as in crewai_stocks_demo.py)
-class MCPTool(BaseTool):
-    """Base class for MCP server tools"""
-    
-    def __init__(self, endpoint: str, name: str, description: str):
-        super().__init__(name=name, description=description)
-        # Store endpoint as a class attribute instead of instance attribute
-        self._endpoint = endpoint
-    
-    def _run(self, **kwargs) -> str:
-        """Execute the MCP tool via HTTP request"""
-        try:
-            response = requests.post(
-                f"{MCP_SERVER_URL}{self._endpoint}",
-                json=kwargs,
-                timeout=30,
-                headers={"Content-Type": "application/json"}
-            )
-            response.raise_for_status()
-            return json.dumps(response.json(), indent=2)
-        except Exception as e:
-            return f"Error calling {self.name}: {str(e)}"
-    
-    @property
-    def endpoint(self):
-        """Get the endpoint for this tool"""
-        return self._endpoint
+# MCP API Configuration
+MCP_API_URL = "http://127.0.0.1:8001"
 
-class SearchSymbolsTool(MCPTool):
-    def __init__(self):
-        super().__init__(
-            endpoint="/search",
-            name="search_symbols",
-            description="Search for stock symbols by company name or ticker. Requires 'q' parameter."
-        )
-    
-    def _run(self, q: str, **kwargs) -> str:
-        """Execute the search tool with required parameters"""
-        try:
-            response = requests.post(
-                f"{MCP_SERVER_URL}{self._endpoint}",
-                json={"q": q},
-                timeout=30,
-                headers={"Content-Type": "application/json"}
-            )
-            response.raise_for_status()
-            return json.dumps(response.json(), indent=2)
-        except Exception as e:
-            return f"Error calling {self.name}: {str(e)}"
-
-class GetQuoteTool(MCPTool):
-    def __init__(self):
-        super().__init__(
-            endpoint="/quote",
-            name="get_quote",
-            description="Get latest price, change percentage, and volume for a stock. Requires symbol parameter."
-        )
-    
-    def _run(self, symbol: str, **kwargs) -> str:
-        """Execute the quote tool with required parameters"""
-        try:
-            response = requests.post(
-                f"{MCP_SERVER_URL}{self._endpoint}",
-                json={"symbol": symbol},
-                timeout=30,
-                headers={"Content-Type": "application/json"}
-            )
-            response.raise_for_status()
-            return json.dumps(response.json(), indent=2)
-        except Exception as e:
-            return f"Error calling {self.name}: {str(e)}"
-
-class GetPriceSeriesTool(MCPTool):
-    def __init__(self):
-        super().__init__(
-            endpoint="/series",
-            name="get_price_series",
-            description="Get historical OHLCV price data for a stock. Requires symbol parameter."
-        )
-    
-    def _run(self, symbol: str, **kwargs) -> str:
-        """Execute the price series tool with required parameters"""
-        try:
-            response = requests.post(
-                f"{MCP_SERVER_URL}{self._endpoint}",
-                json={"symbol": symbol},
-                timeout=30,
-                headers={"Content-Type": "application/json"}
-            )
-            response.raise_for_status()
-            return json.dumps(response.json(), indent=2)
-        except Exception as e:
-            return f"Error calling {self.name}: {str(e)}"
-
-class GetIndicatorsTool(MCPTool):
-    def __init__(self):
-        super().__init__(
-            endpoint="/indicators",
-            name="get_indicators",
-            description="Get technical indicators (SMA, EMA, RSI) for a stock. Requires symbol parameter."
-        )
-    
-    def _run(self, symbol: str, window_sma: int = 20, window_ema: int = 50, window_rsi: int = 14, **kwargs) -> str:
-        """Execute the indicators tool with required parameters"""
-        try:
-            response = requests.post(
-                f"{MCP_SERVER_URL}{self._endpoint}",
-                json={
-                    "symbol": symbol,
-                    "window_sma": window_sma,
-                    "window_ema": window_ema,
-                    "window_rsi": window_rsi
-                },
-                timeout=30,
-                headers={"Content-Type": "application/json"}
-            )
-            response.raise_for_status()
-            return json.dumps(response.json(), indent=2)
-        except Exception as e:
-            return f"Error calling {self.name}: {str(e)}"
-
-class GetEventsTool(MCPTool):
-    def __init__(self):
-        super().__init__(
-            endpoint="/events",
-            name="get_events",
-            description="Detect market events like gaps, volatility spikes, and 52-week extremes. Requires symbol parameter."
-        )
-    
-    def _run(self, symbol: str, **kwargs) -> str:
-        """Execute the events tool with required parameters"""
-        try:
-            response = requests.post(
-                f"{MCP_SERVER_URL}{self._endpoint}",
-                json={"symbol": symbol},
-                timeout=30,
-                headers={"Content-Type": "application/json"}
-            )
-            response.raise_for_status()
-            return json.dumps(response.json(), indent=2)
-        except Exception as e:
-            return f"Error calling {self.name}: {str(e)}"
-
-class GetExplanationTool(MCPTool):
-    def __init__(self, openai_api_key: str = ""):
-        super().__init__(
-            endpoint="/explain",
-            name="get_explanation",
-            description="Get AI-powered explanation of technical analysis with market context. Requires symbol parameter."
-        )
-        # Store API key as a private attribute
-        self._openai_api_key = openai_api_key
-    
-    def _run(self, symbol: str, language: str = "en", tone: str = "neutral", 
-             risk_profile: str = "balanced", horizon_days: int = 30, bullets: bool = True, **kwargs) -> str:
-        """Execute the explanation tool with required parameters"""
-        try:
-            response = requests.post(
-                f"{MCP_SERVER_URL}{self._endpoint}",
-                json={
-                    "symbol": symbol,
-                    "language": language,
-                    "tone": tone,
-                    "risk_profile": risk_profile,
-                    "horizon_days": horizon_days,
-                    "bullets": bullets,
-                    "openai_api_key": self._openai_api_key
-                },
-                timeout=30,
-                headers={"Content-Type": "application/json"}
-            )
-            response.raise_for_status()
-            return json.dumps(response.json(), indent=2)
-        except Exception as e:
-            return f"Error calling {self.name}: {str(e)}"
-
-def check_mcp_server() -> bool:
-    """Check if MCP server is running"""
+def check_mcp_api() -> bool:
+    """Check if MCP API server is running"""
     try:
-        response = requests.get(f"{MCP_SERVER_URL}/health", timeout=5)
+        response = requests.get(f"{MCP_API_URL}/health", timeout=5)
         return response.status_code == 200
     except:
         return False
 
-def start_mcp_server():
-    """Start MCP server in background"""
-    if not check_mcp_server():
+def start_mcp_api():
+    """Start MCP API server in background"""
+    if not check_mcp_api():
         try:
             process = subprocess.Popen([
                 sys.executable, "-m", "uvicorn", 
@@ -289,299 +103,12 @@ def start_mcp_server():
             # Wait for server to start
             for _ in range(20):
                 time.sleep(0.5)
-                if check_mcp_server():
+                if check_mcp_api():
                     return True
             return False
         except Exception:
             return False
     return True
-
-def create_agents(openai_api_key: str) -> Dict[str, Agent]:
-    """Create CrewAI agents"""
-    if not CREWAI_AVAILABLE:
-        return {}
-    
-    # Initialize MCP tools
-    search_tool = SearchSymbolsTool()
-    quote_tool = GetQuoteTool()
-    series_tool = GetPriceSeriesTool()
-    indicators_tool = GetIndicatorsTool()
-    events_tool = GetEventsTool()
-    explanation_tool = GetExplanationTool(openai_api_key)
-    
-    # Research Agent
-    research_agent = Agent(
-        role="Stock Research Specialist",
-        goal="Gather comprehensive basic information about stocks including current quotes, historical data, and company details",
-        backstory="""You are an experienced stock researcher with deep knowledge of financial markets. 
-        Your expertise lies in efficiently gathering and organizing stock data from multiple sources. 
-        You excel at finding relevant information quickly and presenting it in a clear, structured format.""",
-        tools=[search_tool, quote_tool, series_tool],
-        verbose=True,  # Enable verbose output
-        allow_delegation=False
-    )
-    
-    # Technical Analyst
-    technical_agent = Agent(
-        role="Technical Analysis Expert",
-        goal="Perform detailed technical analysis using indicators, patterns, and market events to assess stock momentum and trends",
-        backstory="""You are a seasoned technical analyst with 15+ years of experience in chart analysis and market indicators. 
-        You specialize in interpreting technical signals, identifying patterns, and understanding market psychology. 
-        Your analysis is methodical and based on proven technical analysis principles.""",
-        tools=[indicators_tool, events_tool, explanation_tool],
-        verbose=True,  # Enable verbose output
-        allow_delegation=False
-    )
-    
-    # Report Writer
-    report_agent = Agent(
-        role="Financial Report Writer",
-        goal="Create comprehensive, well-structured investment reports that synthesize research and technical analysis into actionable insights",
-        backstory="""You are a professional financial writer with expertise in translating complex market data into clear, 
-        actionable reports. You have a talent for presenting technical information in an accessible way while maintaining 
-        accuracy and professional standards. Your reports are known for their clarity and practical insights.""",
-        tools=[],
-        verbose=True,  # Enable verbose output
-        allow_delegation=False
-    )
-    
-    return {
-        "research": research_agent,
-        "technical": technical_agent,
-        "report": report_agent
-    }
-
-def create_tasks(symbol: str, openai_api_key: str) -> List[Task]:
-    """Create CrewAI tasks"""
-    if not CREWAI_AVAILABLE:
-        return []
-    
-    # Research Task
-    research_task = Task(
-        description=f"""
-        Conduct comprehensive research on the stock symbol '{symbol}'. Your research should include:
-        
-        1. Search for the symbol to verify it exists and get company information
-        2. Get the latest quote including current price, change percentage, and volume
-        3. Retrieve historical price data (180 days) to understand recent price movements
-        4. Organize all data in a clear, structured format
-        
-        Focus on accuracy and completeness. Present your findings in a well-organized manner that will be useful for technical analysis.
-        """,
-        expected_output="A comprehensive research report containing: symbol verification, current quote data, and historical price summary with key statistics",
-        agent=None,
-        tools=[SearchSymbolsTool(), GetQuoteTool(), GetPriceSeriesTool()]
-    )
-    
-    # Technical Analysis Task
-    technical_task = Task(
-        description=f"""
-        Perform detailed technical analysis on '{symbol}' using the research data provided. Your analysis should include:
-        
-        1. Calculate and interpret technical indicators (SMA, EMA, RSI)
-        2. Identify significant market events (gaps, volatility spikes, 52-week extremes)
-        3. Use AI explanation tool to get contextual interpretation of technical signals
-        4. Assess overall technical momentum and trend direction
-        5. Identify key support and resistance levels from the data
-        
-        Provide specific, actionable technical insights based on the data analysis.
-        """,
-        expected_output="A detailed technical analysis report with indicator interpretations, event analysis, trend assessment, and key price levels",
-        agent=None,
-        tools=[GetIndicatorsTool(), GetEventsTool(), GetExplanationTool(openai_api_key)],
-        context=[research_task]
-    )
-    
-    # Report Task
-    report_task = Task(
-        description=f"""
-        Create a comprehensive investment analysis report for '{symbol}' that synthesizes all research and technical analysis. 
-        The report should include:
-        
-        1. Executive Summary with key findings
-        2. Current Market Position (price, volume, recent changes)
-        3. Technical Analysis Summary (indicators, events, trends)
-        4. Risk Assessment based on technical signals
-        5. Key Takeaways and Observations
-        6. Professional disclaimers
-        
-        Write in a professional, clear style suitable for investment decision-making. 
-        Include specific data points and technical observations from the analysis.
-        """,
-        expected_output="A professional investment analysis report with executive summary, technical analysis, risk assessment, and key takeaways",
-        agent=None,
-        context=[research_task, technical_task]
-    )
-    
-    return [research_task, technical_task, report_task]
-
-def run_crewai_analysis(symbol: str, openai_api_key: str, progress_callback=None, verbose_callback=None) -> Dict[str, Any]:
-    """Run CrewAI analysis with progress tracking"""
-    if not CREWAI_AVAILABLE:
-        return {"error": "CrewAI not available"}
-    
-    # Store original environment variable
-    original_api_key = os.environ.get("OPENAI_API_KEY", None)
-    
-    # Validate and set API key - prioritize input field over environment variable
-    openai_api_key = openai_api_key.strip() if openai_api_key else ""
-    
-    if not openai_api_key:
-        # Check if environment variable exists as fallback
-        env_api_key = os.environ.get("OPENAI_API_KEY", "").strip()
-        if env_api_key:
-            openai_api_key = env_api_key
-        else:
-            return {
-                "success": False,
-                "error": "OpenAI API key is required. Please enter it in the sidebar.",
-                "timestamp": datetime.now().isoformat(),
-                "symbol": symbol
-            }
-    
-    # Set the environment variable with the validated key (this is what CrewAI uses)
-    os.environ["OPENAI_API_KEY"] = openai_api_key
-    
-    try:
-        # Create agents
-        if progress_callback:
-            progress_callback("🔧 Creating agents...", 5)
-        
-        agents = create_agents(openai_api_key)
-        
-        # Create tasks
-        if progress_callback:
-            progress_callback("📋 Setting up tasks...", 8)
-        
-        tasks = create_tasks(symbol, openai_api_key)
-        
-        # Assign agents to tasks
-        tasks[0].agent = agents["research"]
-        tasks[1].agent = agents["technical"]
-        tasks[2].agent = agents["report"]
-        
-        # Create crew
-        if progress_callback:
-            progress_callback("👥 Assembling crew...", 10)
-        
-        crew = Crew(
-            agents=list(agents.values()),
-            tasks=tasks,
-            process=Process.sequential,
-            verbose=True
-        )
-        
-        # Execute analysis with detailed progress tracking
-        if progress_callback:
-            progress_callback("🚀 Starting comprehensive analysis...", 10)
-        
-        # Use Crew's built-in execution instead of individual task execution
-        if progress_callback:
-            progress_callback("📊 Executing crew workflow...", 20)
-        
-        # Test MCP server connectivity
-        if progress_callback:
-            progress_callback("🔍 Testing connectivity...", 15)
-        
-        try:
-            test_response = requests.get(f"{MCP_SERVER_URL}/health", timeout=5)
-            if test_response.status_code != 200:
-                raise Exception(f"MCP server returned status {test_response.status_code}")
-        except Exception as e:
-            raise Exception(f"MCP server is not responding: {str(e)}")
-        
-        # Note: OpenAI API key is now passed directly to tools instead of using environment variable
-        
-        # Execute the crew workflow
-        if progress_callback:
-            progress_callback("📊 Executing analysis...", 20)
-        
-        # Add timeout protection for crew execution
-        import threading
-        
-        def timeout_handler():
-            if verbose_callback:
-                verbose_callback("⏰ Crew execution timed out after 2 minutes")
-            raise TimeoutError("Crew execution timed out")
-        
-        # Set up timeout
-        timer = threading.Timer(120.0, timeout_handler)  # 2 minutes timeout
-        timer.start()
-        
-        try:
-            # Update progress before crew execution
-            if progress_callback:
-                progress_callback("🔄 Executing tasks...", 30)
-            
-            # Capture CrewAI verbose output
-            import sys
-            from io import StringIO
-            
-            # Create a custom stdout/stderr capture
-            class VerboseCapture:
-                def __init__(self, callback):
-                    self.callback = callback
-                    self.buffer = StringIO()
-                
-                def write(self, text):
-                    if text.strip():  # Only capture non-empty lines
-                        self.callback(f"🤖 {text.strip()}")
-                    return len(text)
-                
-                def flush(self):
-                    pass
-            
-            # Capture stdout during crew execution
-            old_stdout = sys.stdout
-            old_stderr = sys.stderr
-                
-            
-            if verbose_callback:
-                verbose_capture = VerboseCapture(verbose_callback)
-                sys.stdout = verbose_capture
-                sys.stderr = verbose_capture
-            
-            result = crew.kickoff()
-            
-            # Restore stdout/stderr
-            if verbose_callback:
-                sys.stdout = old_stdout
-                sys.stderr = old_stderr
-            
-            timer.cancel()  # Cancel timeout if successful
-        except Exception as e:
-            # Restore stdout/stderr in case of error
-            if verbose_callback:
-                sys.stdout = old_stdout
-                sys.stderr = old_stderr
-            timer.cancel()  # Cancel timeout on error
-            raise e
-        
-        # Final completion message
-        if progress_callback:
-            progress_callback("🎉 Analysis completed successfully!", 100)
-        
-        return {
-            "success": True,
-            "result": str(result),
-            "timestamp": datetime.now().isoformat(),
-            "symbol": symbol
-        }
-        
-    except Exception as e:
-        return {
-            "success": False,
-            "error": str(e),
-            "timestamp": datetime.now().isoformat(),
-            "symbol": symbol
-        }
-    finally:
-        # Restore original environment variable
-        if original_api_key is not None:
-            os.environ["OPENAI_API_KEY"] = original_api_key
-        elif "OPENAI_API_KEY" in os.environ and openai_api_key:
-            # Only remove if we set it (i.e., if openai_api_key was provided)
-            del os.environ["OPENAI_API_KEY"]
 
 def main():
     """Main Streamlit app"""
@@ -591,25 +118,25 @@ def main():
     st.markdown("**Comprehensive stock analysis using specialized AI agents**")
     
     # Simple instructions
-    st.info("💡 **Quick Start:** 1) Start MCP Server (sidebar) → 2) Enter OpenAI API Key → 3) Enter stock symbol → 4) Click Start Analysis")
+    st.info("💡 **Quick Start:** 1) Start MCP API Server (sidebar) → 2) Enter OpenAI API Key → 3) Enter stock symbol → 4) Click Start Analysis")
     
     # Sidebar configuration
     with st.sidebar:
         st.header("⚙️ Configuration")
         
-        # MCP Server Status
-        st.subheader("🔗 MCP Server Status")
-        if check_mcp_server():
-            st.success("✅ MCP Server Connected")
+        # MCP API Server Status
+        st.subheader("🔗 MCP API Server Status")
+        if check_mcp_api():
+            st.success("✅ MCP API Server Connected")
         else:
-            st.error("❌ MCP Server Not Running")
-            if st.button("🚀 Start MCP Server", use_container_width=True):
-                with st.spinner("Starting MCP server..."):
-                    if start_mcp_server():
-                        st.success("✅ MCP server started successfully!")
+            st.error("❌ MCP API Server Not Running")
+            if st.button("🚀 Start MCP API Server", use_container_width=True):
+                with st.spinner("Starting MCP API server..."):
+                    if start_mcp_api():
+                        st.success("✅ MCP API server started successfully!")
                         st.rerun()
                     else:
-                        st.error("❌ Failed to start MCP server")
+                        st.error("❌ Failed to start MCP API server")
         
         st.markdown("---")
         
@@ -697,8 +224,8 @@ def main():
         st.warning("Please enter a stock symbol to begin analysis.")
         return
     
-    if not check_mcp_server():
-        st.error("MCP server is not running. Please start it using the button in the sidebar.")
+    if not check_mcp_api():
+        st.error("MCP API server is not running. Please start it using the button in the sidebar.")
         return
     
     col1, col2, col3 = st.columns([1, 1, 2])
@@ -793,13 +320,43 @@ def main():
                     else:
                         st.warning("No analysis text found in result")
                     
+                    # Tool Trace Section
+                    if result.get("tool_trace"):
+                        st.subheader("🔍 Tool Call Trace (MCP Verification)")
+                        tool_trace = result.get("tool_trace", [])
+                        st.info(f"**Total Tool Calls:** {len(tool_trace)} | **Successful:** {result.get('tool_calls_successful', 0)}")
+                        
+                        with st.expander("📊 View Detailed Tool Trace", expanded=True):
+                            for i, call in enumerate(tool_trace, 1):
+                                status_icon = "✅" if call.get("success") else "❌"
+                                st.markdown(f"**{i}. {status_icon} {call.get('tool_name', 'Unknown')}**")
+                                st.markdown(f"   - **Arguments:** `{call.get('arguments', {})}`")
+                                st.markdown(f"   - **Duration:** {call.get('duration_seconds', 0)}s")
+                                st.markdown(f"   - **Time:** {call.get('timestamp', 'N/A')}")
+                                if call.get("error"):
+                                    st.error(f"   - **Error:** {call.get('error')}")
+                                if call.get("result_preview"):
+                                    st.text(f"   - **Result Preview:** {call.get('result_preview')[:150]}...")
+                                st.markdown("---")
+                    
                     # Download button
                     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
                     filename = f"crewai_analysis_{result.get('symbol', 'stock')}_{timestamp}.txt"
                     
+                    # Include tool trace in download
+                    download_content = f"{analysis_text}\n\n{'='*60}\nTOOL CALL TRACE (MCP Verification)\n{'='*60}\n"
+                    if result.get("tool_trace"):
+                        for call in result.get("tool_trace", []):
+                            download_content += f"\n[{call.get('timestamp')}] {call.get('tool_name')}\n"
+                            download_content += f"  Arguments: {call.get('arguments')}\n"
+                            download_content += f"  Success: {call.get('success')}\n"
+                            download_content += f"  Duration: {call.get('duration_seconds')}s\n"
+                            if call.get("error"):
+                                download_content += f"  Error: {call.get('error')}\n"
+                    
                     st.download_button(
-                        label="📥 Download Report",
-                        data=str(analysis_text),
+                        label="📥 Download Report (with Tool Trace)",
+                        data=download_content,
                         file_name=filename,
                         mime="text/plain"
                     )

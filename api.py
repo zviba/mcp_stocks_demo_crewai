@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import json
 import importlib
-from typing import Any, Optional, Dict
+from typing import Any, Optional, Dict, List
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -100,6 +100,23 @@ class BundleBody(BaseModel):
     window_rsi: int = Field(14, ge=2, le=200)
     openai_api_key: str = Field("", description="OpenAI API key for LLM explanations")
 
+class AnalysisBody(BaseModel):
+    """Run CrewAI analysis with configurable tools."""
+    symbol: str = Field(..., min_length=1, description="Stock ticker symbol")
+    openai_api_key: str = Field(..., min_length=1, description="OpenAI API key for LLM")
+    research_tools: Optional[List[str]] = Field(
+        None, 
+        description="List of tool names for research agent (e.g., ['search_symbols', 'get_quote'])"
+    )
+    technical_tools: Optional[List[str]] = Field(
+        None,
+        description="List of tool names for technical agent (e.g., ['get_indicators', 'get_events'])"
+    )
+    report_tools: Optional[List[str]] = Field(
+        None,
+        description="List of tool names for report agent (default: [])"
+    )
+
 # ---------------------------
 # Health
 # ---------------------------
@@ -173,7 +190,7 @@ async def route_explain(body: ExplainBody):
     try:
         t = _tools()
         out = t.explain(
-            body.symbol, 
+            body.symbol,
             body.language, 
             body.tone, 
             body.risk_profile, 
@@ -201,3 +218,66 @@ async def route_bundle(body: BundleBody):
         return _error("validation_error", ve.json(), status=422)
     except Exception as e:
         return _error("bundle_failed", str(e), status=500)
+
+@app.post("/analyze")
+async def route_analyze(body: AnalysisBody):
+    """
+    Run CrewAI analysis with configurable tools.
+    
+    Available tools: search_symbols, get_quote, get_price_series, get_indicators, 
+    get_events, get_explanation
+    
+    Example request:
+    {
+        "symbol": "AAPL",
+        "openai_api_key": "sk-...",
+        "research_tools": ["search_symbols", "get_quote"],
+        "technical_tools": ["get_indicators", "get_events"],
+        "report_tools": []
+    }
+    """
+    try:
+        from agents import run_crewai_analysis
+        from mcp_server import get_available_tools
+        
+        # Validate tool names if provided
+        available_tools = get_available_tools()
+        
+        if body.research_tools:
+            invalid = [t for t in body.research_tools if t not in available_tools]
+            if invalid:
+                return _error("invalid_tool", f"Invalid research tools: {invalid}. Available: {available_tools}", status=422)
+        
+        if body.technical_tools:
+            invalid = [t for t in body.technical_tools if t not in available_tools]
+            if invalid:
+                return _error("invalid_tool", f"Invalid technical tools: {invalid}. Available: {available_tools}", status=422)
+        
+        if body.report_tools:
+            invalid = [t for t in body.report_tools if t not in available_tools]
+            if invalid:
+                return _error("invalid_tool", f"Invalid report tools: {invalid}. Available: {available_tools}", status=422)
+        
+        # Run analysis
+        result = run_crewai_analysis(
+            symbol=body.symbol,
+            openai_api_key=body.openai_api_key,
+            research_tools=body.research_tools,
+            technical_tools=body.technical_tools,
+            report_tools=body.report_tools
+        )
+        
+        return _ok(result)
+    except ValidationError as ve:
+        return _error("validation_error", ve.json(), status=422)
+    except Exception as e:
+        return _error("analysis_failed", str(e), status=500)
+
+@app.get("/tools")
+async def route_tools():
+    """Get list of available tools for agents"""
+    try:
+        from mcp_server import get_available_tools
+        return {"tools": get_available_tools()}
+    except Exception as e:
+        return _error("tools_failed", str(e), status=500)
