@@ -1,0 +1,59 @@
+[project]
+name = "stocks-crew-demo"
+version = "0.1.0"
+description = "Teaching demo: a three-agent CrewAI crew that reaches a real MCP stdio server for stock analytics, with a live trace of every tool call."
+readme = "README.md"
+requires-python = ">=3.11,<3.13"
+dependencies = [
+    "fastapi>=0.110",
+    "uvicorn>=0.23",
+    "pydantic>=2.6",
+    "pandas>=2.0",
+    "numpy>=1.26",
+    "yfinance>=0.2.50",
+    "requests>=2.31",
+    "python-dotenv>=1.0",
+    # Agent/task definitions are loaded from src/stocks_crew/config/*.yaml.
+    "pyyaml>=6.0",
+    "streamlit>=1.36",
+    # Starlette 1.4.0 made `thread_minimum_size` a required keyword-only argument
+    # of GZipResponder. Streamlit 1.61's MediaAwareGZipMiddleware subclasses it
+    # without passing that argument, so every gzip-accepting request -- i.e. every
+    # request from a browser -- dies with a 500 and the page shows only
+    # "Connection error". Streamlit's own pin (starlette<2) is too loose to
+    # exclude it, so cap it here until Streamlit catches up.
+    "starlette<1.4",
+    # Official MCP Python SDK. The code imports `mcp.server.fastmcp`, which lives
+    # here -- NOT in the third-party `fastmcp` package the old requirements.txt
+    # listed. That mismatch is why the old demo never actually spoke MCP.
+    "mcp>=1.9",
+    "crewai>=1.0",
+    # The [mcp] extra is what provides crewai_tools.MCPServerAdapter.
+    "crewai-tools[mcp]>=0.60",
+]
+
+[project.scripts]
+stocks-crew-mcp = "stocks_crew.mcp_server:main"
+
+[dependency-groups]
+dev = [
+    "pytest>=8",
+    "pytest-asyncio>=0.24",
+    "httpx>=0.27",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/stocks_crew"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+markers = [
+    "network: hits live Yahoo Finance endpoints",
+    "llm: needs a real OPENAI_API_KEY and spends tokens",
+]
+addopts = "-m 'not network and not llm'"

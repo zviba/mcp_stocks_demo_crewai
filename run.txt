@@ -1,0 +1,33 @@
+# See README.md for the full walkthrough.
+
+# 0) install uv once
+curl -LsSf https://astral.sh/uv/install.sh | sh
+
+# 1) setup (creates .venv from uv.lock)
+uv sync
+cp .env.sample .env  # add your OPENAI_API_KEY
+
+# 2) run the demo -- this is all you need, no API server first
+uv run streamlit run streamlit_crewai_app.py
+
+# --- optional ---
+
+# prove the MCP server is real without spending a token
+uv run python -m stocks_crew.crew --list-tools
+
+# run one analysis from the command line
+uv run python -m stocks_crew.crew NVDA
+
+# the MCP server on its own (stdio; a silent stdout is correct)
+uv run stocks-crew-mcp
+
+# browse the MCP tools interactively
+npx @modelcontextprotocol/inspector uv run stocks-crew-mcp
+
+# the optional FastAPI bridge on :8001
+uv run uvicorn stocks_crew.api:app --host 0.0.0.0 --port 8001 --reload
+
+# tests
+uv run pytest             # offline, no tokens
+uv run pytest -m network  # also hits Yahoo Finance
+uv run pytest -m llm      # also runs the crew for real (needs a key)

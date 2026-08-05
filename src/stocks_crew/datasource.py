@@ -1,14 +1,20 @@
-
-# datasource.py — yfinance-only datasource
+# datasource.py — yfinance-only datasource.
+#
+# Reached through tools.py, which may be running inside the stdio MCP server.
+# That means nothing here may write to stdout: stdout carries the JSON-RPC
+# frames, and a stray print() corrupts the protocol. Use the logger, which
+# writes to stderr.
 from __future__ import annotations
 
-import os
+import logging
 from typing import Any, Dict, List, Optional
 from datetime import datetime, timedelta, timezone
 
 import pandas as pd
 import yfinance as yf
 import requests
+
+logger = logging.getLogger(__name__)
 
 # -----------------------
 # Search (Yahoo endpoint)
@@ -156,11 +162,11 @@ def price_series(symbol: str, interval: str = "daily", lookback: int = 180) -> p
             auto_adjust=False,
             progress=False,
             threads=True,
-            group_by="column",   
+            group_by="column",
         )
         # Internally calls the Yahoo Finance chart API (similar to https://query1.finance.yahoo.com/v8/finance/chart/AAPL)
-        print("yfinance columns:", list(hist.columns))
-        print("sample rows:\n", hist.head(3))
+        logger.debug("yfinance columns for %s: %s", symbol, list(hist.columns))
+        logger.debug("yfinance sample rows for %s:\n%s", symbol, hist.head(3))
     except Exception:
         hist = None
 

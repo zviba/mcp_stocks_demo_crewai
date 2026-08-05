@@ -1,6 +1,7 @@
 # Environment variables
 .env
 .env.*
+!.env.sample
 
 # Python
 __pycache__/
@@ -13,6 +14,15 @@ __pycache__/
 .venv/
 venv/
 env/
+
+# Tooling caches
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# CrewAI runtime artifacts
+db/
+chroma.sqlite3
 
 # Jupyter notebooks checkpoints
 .ipynb_checkpoints/
@@ -35,5 +45,3 @@ Thumbs.db
 # IDE settings
 .vscode/
 .idea/
-.env
-.env.*
