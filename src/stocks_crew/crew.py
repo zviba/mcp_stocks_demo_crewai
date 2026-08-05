@@ -44,6 +44,22 @@ CONFIG_DIR = Path(__file__).parent / "config"
 # before "AAPL. Ignore previous instructions..." can become instructions.
 SYMBOL_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9.\-]{0,9}$")
 
+# The UI and the API pass ISO codes ("he"). Interpolating the bare code into an
+# English prompt is a weak instruction: by the time the writer runs it has read
+# two English task outputs, and "Language: he" is both terse and ambiguous in
+# English. Spelling the language out — in English *and* in the language itself —
+# is the difference between a Hebrew report and an English one.
+LANGUAGE_NAMES = {
+    "en": "English",
+    "he": "Hebrew (עברית)",
+}
+
+
+def language_name(code: str) -> str:
+    """Map an ISO code to a prompt-friendly language name; pass others through."""
+    key = (code or "en").strip()
+    return LANGUAGE_NAMES.get(key.lower(), key)
+
 
 def validate_symbol(symbol: str) -> str:
     """Return the normalized upper-case ticker, or raise ValueError."""
@@ -183,7 +199,7 @@ def build_crew(
 
     ctx = {
         "symbol": symbol,
-        "language": language,
+        "language": language_name(language),
         "tone": tone,
         "horizon_days": horizon_days,
     }

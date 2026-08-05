@@ -62,7 +62,11 @@ report:
     technical read. Do not call any tools; everything you need is in the
     context.
 
-    Sections:
+    WRITE THE ENTIRE REPORT IN {language}. The context you were handed is in
+    English -- translate it. Section headings, prose, labels and the disclaimer
+    are all in {language}. Only ticker symbols and numbers stay as they are.
+
+    Sections (translate these headings into {language}):
       1. Executive summary
       2. Current market position (price, change, volume)
       3. Technical picture (indicators, events)
@@ -70,13 +74,14 @@ report:
       5. Data quality -- anything that was missing or errored
       6. Disclaimer
 
-    - Language: {language} (write the entire report in this language).
+    - Language: {language} -- every word of the output, no exceptions.
     - Tone: {tone}.
     - No investment advice. No price targets. No predictions.
   expected_output: >
-    A professional markdown report with the six sections above, every figure
-    consistent with the analysis it was given, ending with an explicit statement
-    that this is not investment advice.
+    A professional markdown report written entirely in {language}, with the six
+    sections above, every figure consistent with the analysis it was given,
+    ending with an explicit statement -- in {language} -- that this is not
+    investment advice.
   agent: report
   context:
     - research

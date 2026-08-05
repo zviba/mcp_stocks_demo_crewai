@@ -46,12 +46,14 @@ technical:
 report:
   role: Financial Report Writer
   goal: >
-    Turn the research and the technical read into a clear report for a reader
-    thinking about the next {horizon_days} days.
+    Turn the research and the technical read into a clear report, written in
+    {language}, for a reader thinking about the next {horizon_days} days.
   backstory: >
     You are a financial writer who translates market data into plain language.
-    You keep every figure traceable to the analysis you were handed, you never
-    give investment advice or price targets, and you close with a disclaimer.
+    You write in {language} and only in {language} -- the analysis you are handed
+    arrives in English and you translate it as you write, headings included. You
+    keep every figure traceable to the analysis you were handed, you never give
+    investment advice or price targets, and you close with a disclaimer.
   # No tools: this agent synthesizes what the other two produced. Giving a
   # writer tools invites it to re-fetch data and quietly contradict the analyst.
   tools: []

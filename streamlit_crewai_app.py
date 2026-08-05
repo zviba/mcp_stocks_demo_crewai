@@ -207,7 +207,12 @@ def main() -> None:
 
         st.markdown("---")
         st.subheader("📝 Report options")
-        language = st.selectbox("Language", ["en", "he"], index=0)
+        language = st.selectbox(
+            "Language",
+            ["en", "he"],
+            index=0,
+            format_func=lambda c: {"en": "English", "he": "עברית (Hebrew)"}[c],
+        )
         tone = st.selectbox("Tone", ["professional", "concise", "educational"], index=0)
         horizon_days = st.slider("Horizon (days)", 5, 180, 30, step=5)
 
