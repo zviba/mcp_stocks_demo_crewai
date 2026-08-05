@@ -5,7 +5,7 @@ curl -LsSf https://astral.sh/uv/install.sh | sh
 
 # 1) setup (creates .venv from uv.lock)
 uv sync
-cp .env.sample .env  # add your OPENAI_API_KEY
+cp .env.sample .env  # add OPENAI_API_KEY or GEMINI_API_KEY (either one)
 
 # 2) run the demo -- this is all you need, no API server first
 uv run streamlit run streamlit_crewai_app.py
@@ -17,6 +17,7 @@ uv run python -m stocks_crew.crew --list-tools
 
 # run one analysis from the command line
 uv run python -m stocks_crew.crew NVDA
+uv run python -m stocks_crew.crew NVDA --provider=gemini   # or --provider=openai
 
 # the MCP server on its own (stdio; a silent stdout is correct)
 uv run stocks-crew-mcp

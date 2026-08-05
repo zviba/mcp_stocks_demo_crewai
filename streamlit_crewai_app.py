@@ -19,6 +19,7 @@ from datetime import datetime
 
 import streamlit as st
 
+from stocks_crew import llm as llm_config
 from stocks_crew.console import use_utf8_console
 from stocks_crew.crew import default_agent_tools, list_mcp_tools, run_analysis
 
@@ -176,20 +177,42 @@ def main() -> None:
     with st.sidebar:
         st.header("⚙️ Configuration")
 
-        st.subheader("🔑 OpenAI API key")
-        openai_api_key = st.text_input(
-            "Key",
-            value=st.session_state.get("openai_api_key", ""),
-            type="password",
-            help="Falls back to OPENAI_API_KEY from .env if left blank.",
+        st.subheader("🧠 Model provider")
+        # Same crew, same MCP server, different vendor behind the LLM — the
+        # provider is a one-line swap because nothing below build_crew() knows
+        # which model it is talking to.
+        configured = llm_config.configured_providers()
+        provider_names = llm_config.provider_names()
+        provider = st.selectbox(
+            "Provider",
+            provider_names,
+            index=provider_names.index(llm_config.default_provider()),
+            format_func=lambda name: (
+                f"{llm_config.PROVIDERS[name].label}"
+                f"{' ✅' if name in configured else ''}"
+            ),
         )
-        if openai_api_key:
-            st.session_state["openai_api_key"] = openai_api_key
+        spec = llm_config.PROVIDERS[provider]
+        st.caption(f"Model: `{llm_config.model_for(provider)}`")
+
+        st.subheader(f"🔑 {spec.label} API key")
+        # Keyed per provider so switching vendors does not send an OpenAI key
+        # to Google.
+        session_key = f"api_key_{provider}"
+        api_key = st.text_input(
+            "Key",
+            value=st.session_state.get(session_key, ""),
+            type="password",
+            key=f"input_{session_key}",
+            help=f"Falls back to {spec.api_key_env} from .env if left blank.",
+        ) or ""
+        if api_key:
+            st.session_state[session_key] = api_key
             st.success("✅ Key set for this session")
-        elif os.getenv("OPENAI_API_KEY"):
-            st.info("Using OPENAI_API_KEY from the environment")
+        elif os.getenv(spec.api_key_env):
+            st.info(f"Using {spec.api_key_env} from the environment")
         else:
-            st.warning("⚠️ No key — the crew cannot run")
+            st.warning(f"⚠️ No {spec.api_key_env} — the crew cannot run")
 
         st.markdown("---")
         st.subheader("🔌 MCP server")
@@ -276,7 +299,8 @@ def main() -> None:
         with st.spinner("The crew is working…"):
             result = run_analysis(
                 symbol,
-                openai_api_key=openai_api_key,
+                provider=provider,
+                api_key=api_key,
                 language=language,
                 tone=tone,
                 horizon_days=horizon_days,
@@ -297,7 +321,11 @@ def main() -> None:
         st.error(f"❌ {result.get('error_code', 'error')}: {result.get('error')}")
         return
 
-    st.success(f"✅ Analysis completed for {result.get('symbol')}")
+    ran_on = result.get("model")
+    st.success(
+        f"✅ Analysis completed for {result.get('symbol')}"
+        + (f" · ran on `{ran_on}`" if ran_on else "")
+    )
     st.markdown(result.get("result", ""))
 
     render_guardrail(result.get("guardrail", {}))

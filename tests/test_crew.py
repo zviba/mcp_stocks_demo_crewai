@@ -45,11 +45,86 @@ def test_run_analysis_rejects_a_bad_symbol_before_spending_anything(monkeypatch)
     assert result["error_code"] == "invalid_symbol"
 
 
-def test_run_analysis_reports_a_missing_key_in_band(monkeypatch):
-    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+# ---------------------------------------------------------------------------
+# Provider selection, as seen from run_analysis. llm.py is tested on its own in
+# test_llm.py; these check the wiring — the failures come back in band, with the
+# error code of the provider that was actually chosen.
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def no_keys(monkeypatch):
+    for var in ("OPENAI_API_KEY", "GEMINI_API_KEY", "LLM_PROVIDER"):
+        monkeypatch.delenv(var, raising=False)
+
+
+@pytest.fixture
+def stop_after_key_resolution(monkeypatch):
+    """Fail the step *after* the provider is chosen, and report what it saw.
+
+    Key resolution happens before the MCP server is spawned and long before the
+    model is called, so this proves which provider a run picked without starting
+    a subprocess or touching the network.
+    """
+    import crewai_tools
+
+    seen = {}
+
+    def explode(*args, **kwargs):
+        import os
+
+        seen["OPENAI_API_KEY"] = os.getenv("OPENAI_API_KEY")
+        seen["GEMINI_API_KEY"] = os.getenv("GEMINI_API_KEY")
+        raise RuntimeError("stopped before the MCP handshake")
+
+    monkeypatch.setattr(crewai_tools, "MCPServerAdapter", explode)
+    return seen
+
+
+def test_run_analysis_reports_a_missing_key_in_band(no_keys):
     result = crew.run_analysis("AAPL")
     assert result["success"] is False
     assert result["error_code"] == "openai_api_key_required"
+
+
+def test_the_missing_key_error_follows_the_chosen_provider(no_keys):
+    result = crew.run_analysis("AAPL", provider="gemini")
+    assert result["error_code"] == "gemini_api_key_required"
+    assert "GEMINI_API_KEY" in result["error"]
+
+
+def test_a_gemini_key_alone_is_enough_to_pick_gemini(
+    no_keys, monkeypatch, stop_after_key_resolution
+):
+    """No provider named, only GEMINI_API_KEY set — the run picks Gemini rather
+    than demanding an OpenAI key, and exports the key the Gemini SDK reads."""
+    monkeypatch.setenv("GEMINI_API_KEY", "AIza-env")
+    result = crew.run_analysis("AAPL")
+    assert result["error"] == "stopped before the MCP handshake"
+    assert stop_after_key_resolution["GEMINI_API_KEY"] == "AIza-env"
+
+
+def test_a_per_request_gemini_key_is_exported_for_the_run(
+    no_keys, stop_after_key_resolution
+):
+    crew.run_analysis("AAPL", provider="gemini", api_key="AIza-sidebar")
+    assert stop_after_key_resolution["GEMINI_API_KEY"] == "AIza-sidebar"
+    # …and the OpenAI slot is left alone; one provider per run.
+    assert stop_after_key_resolution["OPENAI_API_KEY"] is None
+
+
+def test_an_unknown_provider_is_refused_in_band(no_keys):
+    result = crew.run_analysis("AAPL", provider="llama-at-home")
+    assert result["success"] is False
+    assert result["error_code"] == "unknown_provider"
+
+
+def test_the_legacy_openai_api_key_argument_still_works(
+    no_keys, stop_after_key_resolution
+):
+    """Callers written against the single-provider version keep working."""
+    crew.run_analysis("AAPL", openai_api_key="sk-legacy")
+    assert stop_after_key_resolution["OPENAI_API_KEY"] == "sk-legacy"
 
 
 # ---------------------------------------------------------------------------
@@ -149,6 +224,21 @@ def test_build_crew_only_grants_the_tools_each_agent_asked_for():
     assert granted["research"] == ["search_symbols", "latest_quote", "price_series"]
     assert granted["technical"] == ["indicators", "detect_events"]
     assert granted["report"] == []
+
+
+@pytest.mark.parametrize(
+    "model,client",
+    [
+        ("openai/gpt-4o-mini", "OpenAICompletion"),
+        ("gemini/gemini-2.5-flash", "GeminiCompletion"),
+    ],
+)
+def test_the_model_string_is_the_only_thing_that_picks_a_vendor(model, client):
+    """Every agent gets the client its model string implies, and nothing else
+    about the crew changes between providers."""
+    crew_obj, _ = crew.build_crew(_stub_mcp_tools(), "AAPL", model=model)
+    for agent in crew_obj.agents:
+        assert type(agent.llm).__name__ == client
 
 
 def test_tool_overrides_replace_the_yaml_defaults():

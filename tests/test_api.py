@@ -80,6 +80,52 @@ def test_analyze_passes_tool_overrides_through(client, monkeypatch):
     assert captured["tool_overrides"] == {"research": ["latest_quote"]}
 
 
+def test_analyze_passes_the_provider_and_key_through(client, monkeypatch):
+    captured = {}
+
+    def fake_run(symbol, **kwargs):
+        captured.update(kwargs)
+        return {"success": True, "symbol": symbol, "result": "ok"}
+
+    monkeypatch.setattr(api, "run_analysis", fake_run)
+    resp = client.post(
+        "/analyze",
+        json={"symbol": "AAPL", "provider": "gemini", "api_key": "AIza-test"},
+    )
+    assert resp.status_code == 200
+    assert captured["provider"] == "gemini"
+    assert captured["api_key"] == "AIza-test"
+
+
+def test_analyze_rejects_a_provider_that_does_not_exist(client):
+    resp = client.post("/analyze", json={"symbol": "AAPL", "provider": "llama-at-home"})
+    assert resp.status_code == 422
+    assert resp.json()["error"] == "unknown_provider"
+
+
+def test_analyze_still_accepts_the_legacy_openai_key_field(client, monkeypatch):
+    captured = {}
+
+    def fake_run(symbol, **kwargs):
+        captured.update(kwargs)
+        return {"success": True, "symbol": symbol, "result": "ok"}
+
+    monkeypatch.setattr(api, "run_analysis", fake_run)
+    client.post("/analyze", json={"symbol": "AAPL", "openai_api_key": "sk-legacy"})
+    assert captured["api_key"] == "sk-legacy"
+
+
+def test_providers_route_lists_both_vendors_and_which_are_configured(client, monkeypatch):
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    monkeypatch.setenv("GEMINI_API_KEY", "AIza-test")
+    body = client.get("/providers").json()
+    by_name = {p["name"]: p for p in body["providers"]}
+    assert set(by_name) == {"openai", "gemini"}
+    assert by_name["gemini"]["configured"] is True
+    assert by_name["openai"]["configured"] is False
+    assert by_name["gemini"]["model"].startswith("gemini/")
+
+
 def test_analyze_still_accepts_the_legacy_per_agent_fields(client, monkeypatch):
     captured = {}
 

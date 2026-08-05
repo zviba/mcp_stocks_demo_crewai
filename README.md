@@ -27,12 +27,12 @@ Then:
 
 ```bash
 uv sync                     # creates .venv and installs everything from uv.lock
-cp .env.sample .env         # add your OPENAI_API_KEY
+cp .env.sample .env         # add OPENAI_API_KEY or GEMINI_API_KEY (either one)
 uv run streamlit run streamlit_crewai_app.py
 ```
 
-> The first `uv sync` pulls CrewAI, which brings litellm and chromadb — expect a
-> few hundred MB and a minute or two. Subsequent syncs are instant.
+> The first `uv sync` pulls CrewAI, chromadb and the OpenAI and Google SDKs —
+> expect a few hundred MB and a minute or two. Subsequent syncs are instant.
 
 That is the whole demo. **There is no API server to start first**: the crew runs
 inside the Streamlit process and launches the MCP subprocess itself. The FastAPI
@@ -101,7 +101,9 @@ the protocol channel. Use `logging` (which goes to stderr). This is why
 
 ### The crew
 
-Three agents, run sequentially, all on `gpt-4o-mini` (override with `OPENAI_MODEL`):
+Three agents, run sequentially, all on the same model — `openai/gpt-4o-mini` or
+`gemini/gemini-2.5-flash`, depending on which provider the run picked (see
+[Choosing a model provider](#choosing-a-model-provider)):
 
 | Agent | MCP tools | Job |
 |---|---|---|
@@ -237,7 +239,8 @@ Served by `stocks-crew-mcp`, all returning JSON strings:
 | POST | `/series` | `{symbol, interval, lookback}` | array of OHLCV rows |
 | POST | `/indicators` | `{symbol, window_sma, window_ema, window_rsi}` | `{symbol, last_close, sma, ema, rsi}` |
 | POST | `/events` | `{symbol}` | `{symbol, date, gap_up, gap_down, vol_spike, is_52w_high, is_52w_low}` |
-| POST | `/analyze` | `{symbol, openai_api_key, language, tone, horizon_days, tools}` | `{success, result, tool_trace, agent_tools, mcp_tools, …}` |
+| GET | `/providers` | — | `{providers: [{name, label, api_key_env, model, configured}], default}` |
+| POST | `/analyze` | `{symbol, provider, api_key, language, tone, horizon_days, tools}` | `{success, result, provider, model, tool_trace, agent_tools, mcp_tools, …}` |
 
 The data routes call `tools.py` in-process — a button click should not pay for
 spawning a subprocess. `/analyze` and `/mcp/tools` go over MCP, because that is
@@ -259,15 +262,66 @@ work and are folded into `tools`.
 Tool failures come back as `{"error": "<code>", "message": "..."}` with a 200, so
 the UI renders them inline. A malformed *request* is a real 422.
 
+## Choosing a model provider
+
+The crew runs on **OpenAI** or **Google Gemini**. You need a key for one of
+them, not both.
+
+```bash
+OPENAI_API_KEY=sk-...     # .env — or
+GEMINI_API_KEY=AIza...
+```
+
+Which one a given run uses is decided in `src/stocks_crew/llm.py`, in this
+order:
+
+1. the `provider` named by the caller — the Streamlit sidebar dropdown, or
+   `{"provider": "gemini"}` in an `/analyze` body;
+2. `LLM_PROVIDER` in `.env`;
+3. whichever provider has a key set;
+4. OpenAI, which is also whose "key required" error you get when nothing is set.
+
+Everything below that decision is vendor-neutral. CrewAI routes on the *model
+string*, written in LiteLLM's `<provider>/<model>` syntax — `openai/gpt-4o-mini`
+builds an OpenAI client that reads `OPENAI_API_KEY`, `gemini/gemini-2.5-flash`
+builds a Gemini client that reads `GEMINI_API_KEY` — so switching providers is
+one model string and one environment variable:
+
+```python
+llm = LLM(model="gemini/gemini-2.5-flash", temperature=0.2)
+```
+
+`build_crew()` takes that string and never learns which vendor is behind it; the
+agents, the MCP server and the guardrail do not change at all. That is the point
+worth showing on screen: the provider is a detail of the LLM layer, not of the
+agent design.
+
+CrewAI 1.x calls each vendor through its own SDK rather than through LiteLLM, so
+`crewai[google-genai]` is in the dependencies — without it, a `gemini/…` model
+has nothing to route to. It also validates the model part against a list of
+models it knows; a name it does not recognise falls through to LiteLLM, which
+this project does not install. If you point `GEMINI_MODEL` or `OPENAI_MODEL` at
+something newer than the pinned `crewai`, upgrade `crewai`.
+
+`GET /providers` reports both vendors and which of them currently has a key.
+
 ## Environment variables
 
 | Variable | Purpose |
 |---|---|
-| `OPENAI_API_KEY` | Required to run the crew. Without it `/analyze` returns `openai_api_key_required` — there is no offline fallback. |
+| `OPENAI_API_KEY` | Key for the OpenAI provider. Without a key for the chosen provider, `/analyze` returns `openai_api_key_required` / `gemini_api_key_required` — there is no offline fallback. |
+| `GEMINI_API_KEY` | Key for the Gemini provider (Google AI Studio). |
+| `LLM_PROVIDER` | Optional; `openai` or `gemini`. Which provider a run uses when the caller does not name one. |
 | `OPENAI_MODEL` | Optional; defaults to `gpt-4o-mini`. |
+| `GEMINI_MODEL` | Optional; defaults to `gemini-2.5-flash`. |
+
+Either model variable takes a bare name or the fully-qualified LiteLLM
+`<provider>/<model>` form — the routing prefix is added for you.
 | `LOG_LEVEL` | Optional; `DEBUG` shows the MCP handshake and yfinance internals. |
 
-The Streamlit sidebar also accepts a key at runtime, which takes precedence.
+The Streamlit sidebar also accepts a provider and a key at runtime, which take
+precedence. Sidebar keys are stored per provider, so switching vendors never
+sends an OpenAI key to Google.
 
 ## Tests
 
@@ -283,8 +337,11 @@ silently becoming decorative again.
 
 ## Troubleshooting
 
-- **`openai_api_key_required`** — no key in `.env`, and none typed into the
-  Streamlit sidebar.
+- **`openai_api_key_required` / `gemini_api_key_required`** — no key for the
+  provider the run chose, neither in `.env` nor typed into the Streamlit
+  sidebar. The code tells you which provider it picked and which variable it
+  looked for; if that is the wrong provider, set `LLM_PROVIDER` or pass
+  `provider` explicitly.
 - **The crew hangs, or the adapter reports a protocol error** — almost always
   something printing to stdout inside the server process. Check for stray
   `print()` calls in `datasource.py`, `analytics.py` or `tools.py`.

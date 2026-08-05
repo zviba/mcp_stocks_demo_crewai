@@ -18,6 +18,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field, ValidationError, field_validator
 
+from . import llm as llm_config
 from . import tools
 from .console import use_utf8_console
 from .crew import default_agent_tools, list_mcp_tools, run_analysis, validate_symbol
@@ -126,7 +127,17 @@ class EventsBody(_SymbolBody):
 class AnalysisBody(_SymbolBody):
     """Run the CrewAI crew over MCP."""
 
-    openai_api_key: str = Field("", description="Overrides OPENAI_API_KEY for this request")
+    provider: Optional[str] = Field(
+        None,
+        description=(
+            "Model vendor: 'openai' or 'gemini'. Omitted, it follows LLM_PROVIDER "
+            "or whichever API key is set in the environment."
+        ),
+    )
+    api_key: str = Field(
+        "",
+        description="Overrides the chosen provider's key (OPENAI_API_KEY / GEMINI_API_KEY)",
+    )
     language: str = Field("en", description="Language the report is written in")
     tone: str = Field("professional", description="professional | concise | educational")
     horizon_days: int = Field(30, ge=5, le=365)
@@ -138,11 +149,16 @@ class AnalysisBody(_SymbolBody):
             "Omitted agents keep their YAML defaults."
         ),
     )
-    # Legacy fields from the pre-MCP version of this demo, kept so older
-    # examples keep working. They are folded into `tools` below.
+    # Legacy fields from earlier versions of this demo, kept so older examples
+    # keep working. The tool lists are folded into `tools` below;
+    # `openai_api_key` is the single-provider spelling of `api_key`.
+    openai_api_key: str = Field("", deprecated=True)
     research_tools: Optional[List[str]] = Field(None, deprecated=True)
     technical_tools: Optional[List[str]] = Field(None, deprecated=True)
     report_tools: Optional[List[str]] = Field(None, deprecated=True)
+
+    def resolved_api_key(self) -> str:
+        return (self.api_key or "").strip() or (self.openai_api_key or "").strip()
 
     def resolved_tool_overrides(self) -> Optional[Dict[str, List[str]]]:
         overrides: Dict[str, List[str]] = dict(self.tools or {})
@@ -248,6 +264,28 @@ async def route_agents():
     return {"agents": default_agent_tools()}
 
 
+@app.get("/providers")
+async def route_providers():
+    """Which model vendors this build knows, and which have a key right now.
+
+    `configured` is read from the environment at request time, so it answers
+    "can /analyze actually run?" without spending a token to find out.
+    """
+    return {
+        "providers": [
+            {
+                "name": p.name,
+                "label": p.label,
+                "api_key_env": p.api_key_env,
+                "model": llm_config.model_for(p.name),
+                "configured": p.name in llm_config.configured_providers(),
+            }
+            for p in llm_config.PROVIDERS.values()
+        ],
+        "default": llm_config.default_provider(),
+    }
+
+
 @app.post("/analyze")
 async def route_analyze(body: AnalysisBody):
     """Run the three-agent crew and return the report plus the tool-call trace.
@@ -255,10 +293,17 @@ async def route_analyze(body: AnalysisBody):
     Example:
         {
           "symbol": "AAPL",
-          "openai_api_key": "sk-...",
+          "provider": "gemini",
+          "api_key": "AIza...",
           "tools": {"research": ["latest_quote"], "technical": ["indicators", "detect_events"]}
         }
     """
+    if body.provider:
+        try:
+            llm_config.get_provider(body.provider)
+        except llm_config.UnknownProvider as e:
+            return _error(llm_config.UnknownProvider.error_code, str(e), status=422)
+
     overrides = body.resolved_tool_overrides()
     known_agents = set(default_agent_tools())
     unknown = sorted(set(overrides or {}) - known_agents)
@@ -275,7 +320,8 @@ async def route_analyze(body: AnalysisBody):
         result = await asyncio.to_thread(
             run_analysis,
             body.symbol,
-            openai_api_key=body.openai_api_key,
+            provider=body.provider,
+            api_key=body.resolved_api_key(),
             language=body.language,
             tone=body.tone,
             horizon_days=body.horizon_days,

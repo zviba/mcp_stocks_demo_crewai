@@ -27,7 +27,11 @@ dependencies = [
     # here -- NOT in the third-party `fastmcp` package the old requirements.txt
     # listed. That mismatch is why the old demo never actually spoke MCP.
     "mcp>=1.9",
-    "crewai>=1.0",
+    # CrewAI 1.x talks to each vendor through a native SDK chosen from the model
+    # string, so running on Gemini needs google-genai present -- without the
+    # extra, LLM(model="gemini/...") falls through to a LiteLLM that is not
+    # installed and dies with an ImportError. OpenAI's SDK is a base dependency.
+    "crewai[google-genai]>=1.0",
     # The [mcp] extra is what provides crewai_tools.MCPServerAdapter.
     "crewai-tools[mcp]>=0.60",
 ]
@@ -54,6 +58,6 @@ testpaths = ["tests"]
 asyncio_mode = "auto"
 markers = [
     "network: hits live Yahoo Finance endpoints",
-    "llm: needs a real OPENAI_API_KEY and spends tokens",
+    "llm: needs a real OPENAI_API_KEY or GEMINI_API_KEY and spends tokens",
 ]
 addopts = "-m 'not network and not llm'"

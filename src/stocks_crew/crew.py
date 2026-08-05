@@ -25,12 +25,11 @@ from typing import Any, Callable, Dict, List, Optional, Tuple
 
 import yaml
 
+from . import llm as llm_config
 from .guardrails import check_report
 from .trace import ToolTracer
 
 logger = logging.getLogger(__name__)
-
-DEFAULT_MODEL = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
 
 # Roles, backstories and task briefs live in YAML rather than in this file, so a
 # prompt can be tweaked without touching Python. See config/agents.yaml and
@@ -187,15 +186,22 @@ def build_crew(
     tone: str = "professional",
     horizon_days: int = 30,
     tool_overrides: Optional[Dict[str, List[str]]] = None,
+    model: Optional[str] = None,
 ) -> Tuple[Any, Dict[str, List[str]]]:
     """Assemble the sequential crew described by config/*.yaml around live MCP tools.
 
     Returns (crew, tools_per_agent) so the caller can report which tools each
     agent was actually given — the allow-list, before anyone has called anything.
+
+    `model` is a "<provider>/<model>" string; omitted, it comes from the default
+    provider (see llm.py). Nothing else in this function knows which vendor is
+    behind it.
     """
     from crewai import LLM, Agent, Crew, Process, Task
 
-    llm = LLM(model=DEFAULT_MODEL, temperature=0.2)
+    # The model string is the only vendor-specific thing here: CrewAI reads its
+    # "<provider>/" prefix and builds the matching client.
+    llm = LLM(model=model or llm_config.model_for(), temperature=0.2)
 
     ctx = {
         "symbol": symbol,
@@ -248,12 +254,6 @@ def build_crew(
 # ---------------------------------------------------------------------------
 
 
-def _resolve_api_key(openai_api_key: str = "") -> Optional[str]:
-    """Per-request key wins over the environment; returns None if neither is set."""
-    key = (openai_api_key or "").strip() or (os.getenv("OPENAI_API_KEY") or "").strip()
-    return key or None
-
-
 def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
@@ -270,19 +270,27 @@ def _failed(symbol: str, error: str, code: str = "analysis_failed") -> Dict[str,
 
 def run_analysis(
     symbol: str,
-    openai_api_key: str = "",
+    api_key: str = "",
     language: str = "en",
     tone: str = "professional",
     horizon_days: int = 30,
     tool_overrides: Optional[Dict[str, List[str]]] = None,
     progress: Optional[Callable[[str, int], None]] = None,
     on_tool_call: Optional[Callable[[Dict[str, Any]], None]] = None,
+    provider: Optional[str] = None,
+    openai_api_key: str = "",
 ) -> Dict[str, Any]:
     """Run the three-agent crew against the MCP server and return a result dict.
 
     Always returns a dict; failures are reported in-band as
     {"success": False, "error": ..., "error_code": ...} rather than raised, so
     both the HTTP layer and Streamlit can render them the same way.
+
+    `provider` selects the model vendor ("openai" or "gemini"); omitted, it
+    follows LLM_PROVIDER or whichever key is present (see llm.py). `api_key` is
+    that provider's key for this one run and beats the environment.
+    `openai_api_key` is the old name for the same thing, kept so callers written
+    against the single-provider version keep working.
 
     On success the dict carries `tool_trace` — the record of every tool call the
     agents actually made, collected off the CrewAI event bus (see trace.py).
@@ -298,27 +306,23 @@ def run_analysis(
     except ValueError as e:
         return _failed(symbol, str(e), code="invalid_symbol")
 
-    key = _resolve_api_key(openai_api_key)
-    if not key:
-        return _failed(
-            symbol,
-            "OpenAI API key is required to run the crew. Set OPENAI_API_KEY in "
-            ".env or enter one in the sidebar.",
-            code="openai_api_key_required",
-        )
-
-    # CrewAI reaches the model through LiteLLM, which reads the key from the
-    # environment rather than from a client object we could pass around.
-    previous_key = os.environ.get("OPENAI_API_KEY")
-    os.environ["OPENAI_API_KEY"] = key
+    try:
+        config = llm_config.resolve(provider, api_key or openai_api_key)
+    except llm_config.UnknownProvider as e:
+        return _failed(symbol, str(e), code=llm_config.UnknownProvider.error_code)
+    except llm_config.MissingAPIKey as e:
+        return _failed(symbol, str(e), code=e.error_code)
 
     try:
         from crewai_tools import MCPServerAdapter
 
         step("Starting the MCP server…", 10)
         # Context-manager form so the MCP subprocess is always torn down, even
-        # if the crew raises partway through.
-        with MCPServerAdapter(server_params()) as mcp_tools:
+        # if the crew raises partway through. The provider context manager is
+        # what puts the key where the vendor SDK reads it, for this run only.
+        with llm_config.provider_environment(config), MCPServerAdapter(
+            server_params()
+        ) as mcp_tools:
             offered = [getattr(t, "name", "?") for t in mcp_tools]
             step(f"MCP server ready — {len(offered)} tools: {', '.join(offered)}", 20)
 
@@ -329,8 +333,13 @@ def run_analysis(
                 tone=tone,
                 horizon_days=horizon_days,
                 tool_overrides=tool_overrides,
+                model=config.model,
             )
-            step("Crew assembled — running research → technical → report…", 30)
+            step(
+                f"Crew assembled on {config.provider.label} ({config.model}) — "
+                "running research → technical → report…",
+                30,
+            )
 
             with ToolTracer(on_call=on_tool_call) as tracer:
                 result = crew.kickoff()
@@ -355,6 +364,8 @@ def run_analysis(
             "symbol": symbol,
             "timestamp": _now(),
             "result": report,
+            "provider": config.provider.name,
+            "model": config.model,
             "mcp_tools": offered,
             "agent_tools": granted,
             "guardrail": guardrail,
@@ -363,11 +374,6 @@ def run_analysis(
     except Exception as e:
         logger.exception("Crew analysis failed for %s", symbol)
         return _failed(symbol, str(e))
-    finally:
-        if previous_key is None:
-            os.environ.pop("OPENAI_API_KEY", None)
-        else:
-            os.environ["OPENAI_API_KEY"] = previous_key
 
 
 if __name__ == "__main__":
@@ -380,5 +386,10 @@ if __name__ == "__main__":
     if "--list-tools" in sys.argv:
         print(json.dumps(list_mcp_tools(), indent=2))
     else:
+        # `uv run python -m stocks_crew.crew NVDA --provider=gemini`
         target = next((a for a in sys.argv[1:] if not a.startswith("-")), "AAPL")
-        print(json.dumps(run_analysis(target), indent=2))
+        chosen = next(
+            (a.split("=", 1)[1] for a in sys.argv[1:] if a.startswith("--provider=")),
+            None,
+        )
+        print(json.dumps(run_analysis(target, provider=chosen), indent=2))
