@@ -136,6 +136,30 @@ def render_guardrail(guardrail: dict) -> None:
         "guardrail that can hallucinate is not a guardrail."
     )
 
+    render_crewai_guardrail(guardrail.get("crewai_guardrail") or {})
+
+
+def render_crewai_guardrail(status: dict) -> None:
+    """Say plainly what CrewAI's own HallucinationGuardrail did on this run.
+
+    Which, on the open-source package, is nothing. This panel exists so the
+    framework's guardrail cannot be mistaken for a working one — an unenforced
+    check that looks enforced is the failure mode worth showing students.
+    """
+    if not status.get("attached_to"):
+        return
+
+    attached = ", ".join(status["attached_to"])
+    if status.get("enforcing"):
+        st.info(f"🧩 CrewAI `HallucinationGuardrail` ran on: **{attached}**.")
+    else:
+        st.warning(
+            f"🧩 CrewAI `HallucinationGuardrail` is attached to **{attached}** and "
+            "**did not check anything**. It is a no-op placeholder in the "
+            "open-source `crewai` package: every output passes, whatever it says. "
+            "The verdict above is from `guardrails.py`, which actually ran."
+        )
+
 
 def build_download(result: dict) -> str:
     guardrail = result.get("guardrail") or {}

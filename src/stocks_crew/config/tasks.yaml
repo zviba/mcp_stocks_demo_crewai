@@ -86,3 +86,13 @@ report:
   context:
     - research
     - technical
+  # CrewAI's built-in output check, attached to the task that writes the prose.
+  # `true` takes its defaults; a mapping passes the constructor's options through
+  # (e.g. `threshold: 8.0`, `context: "..."`).
+  #
+  # Switched on for the contrast, not for the protection: in the open-source
+  # crewai package this class is a placeholder that passes every output and
+  # prints a link to the hosted platform. The real check on this report is
+  # guardrails.py, which runs afterwards in plain Python. See the note above
+  # `_hallucination_guardrail` in crew.py.
+  hallucination_guardrail: true

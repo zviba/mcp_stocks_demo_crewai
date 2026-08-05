@@ -241,6 +241,67 @@ def test_the_model_string_is_the_only_thing_that_picks_a_vendor(model, client):
         assert type(agent.llm).__name__ == client
 
 
+# ---------------------------------------------------------------------------
+# CrewAI's built-in HallucinationGuardrail
+#
+# These pin the wiring *and* the fact that it does not enforce anything on the
+# open-source package. The second half is the point: if a future crewai turns the
+# placeholder into a real check, `test_the_builtin_guardrail_is_a_no_op...` fails
+# and someone has to come read this, which is the correct outcome either way.
+# ---------------------------------------------------------------------------
+
+
+def test_the_report_task_opts_into_the_builtin_guardrail():
+    assert crew._load_config("tasks")["report"][crew.GUARDRAIL_KEY] is True
+
+
+def test_the_guardrail_is_attached_to_the_report_task_and_nothing_else():
+    crew_obj, _ = crew.build_crew(_stub_mcp_tools(), "AAPL")
+    guarded = [t for t in crew_obj.tasks if t.guardrail is not None]
+    assert len(guarded) == 1
+    assert type(guarded[0].guardrail).__name__ == "HallucinationGuardrail"
+    # It is the last task — the one that writes the prose a reader sees.
+    assert guarded[0] is crew_obj.tasks[-1]
+
+
+def test_a_task_that_does_not_ask_for_a_guardrail_does_not_get_one():
+    assert crew._hallucination_guardrail({"description": "no guardrail here"}, llm=None) is None
+
+
+def test_the_builtin_guardrail_is_a_no_op_in_open_source_crewai():
+    """It passes a report that invents a price *and* gives investment advice.
+
+    Not a complaint about crewai — the placeholder says so in its own logs. It is
+    here so nobody reads `hallucination_guardrail: true` in the YAML and concludes
+    the report is being checked by it. guardrails.py is what checks the report.
+    """
+    from crewai.tasks.hallucination_guardrail import HallucinationGuardrail
+    from crewai.tasks.task_output import TaskOutput
+
+    from stocks_crew.guardrails import check_report
+
+    guardrail = HallucinationGuardrail(llm=None, threshold=10.0)
+    invented = TaskOutput(
+        description="report",
+        raw="AAPL trades at 999999.00 and you should buy it immediately.",
+        agent="report",
+    )
+    assert guardrail(invented) == (True, invented.raw)
+
+    # …and the deterministic check, on the same text, does not agree.
+    verdict = check_report(invented.raw, evidence=["{}"])
+    assert verdict["passed"] is False
+    assert "999999.00" in verdict["ungrounded_figures"]
+
+
+def test_guardrail_status_reports_that_it_does_not_enforce():
+    status = crew.guardrail_status()
+    assert status["attached_to"] == ["report"]
+    assert status["available"] is True
+    assert status["enforcing"] is False
+    assert "no-op" in status["note"]
+
+
 def test_tool_overrides_replace_the_yaml_defaults():
     _, granted = crew.build_crew(
         _stub_mcp_tools(), "AAPL", tool_overrides={"research": ["latest_quote"]}

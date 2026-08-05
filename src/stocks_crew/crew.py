@@ -175,6 +175,108 @@ def _select_tools(mcp_tools, wanted: set):
 
 
 # ---------------------------------------------------------------------------
+# CrewAI's own task guardrail
+# ---------------------------------------------------------------------------
+#
+# CrewAI ships a `HallucinationGuardrail` that attaches to a Task and is supposed
+# to score the task's output for faithfulness before the crew moves on. It is
+# wired up here, on whichever tasks ask for it in tasks.yaml, because it is the
+# framework-native answer to the question guardrails.py answers by hand — and
+# because the comparison is the lesson.
+#
+# READ THIS BEFORE RELYING ON IT: in the open-source `crewai` package the class
+# is a *placeholder*. Its __call__ returns `(True, output)` for every input and
+# logs "Hallucination detection is a no-op in open source, use it for free at
+# https://app.crewai.com". Threshold and context are stored and ignored. Handed a
+# report that says a stock trades at 999999.00 and that you should buy it, it
+# passes. Only the hosted platform supplies the real implementation (it installs
+# a module-level `_validate_output_hook` that this class defers to).
+#
+# So this is switched on for what it teaches, and `guardrail_status()` reports
+# `enforcing: False` so the UI can say so out loud. The class exists, the wiring
+# is real, the check is not — and a no-op guardrail that nobody knows is a no-op
+# is worse than no guardrail, because it buys confidence it has not earned. Which
+# is the whole argument for the deterministic check in guardrails.py: 190 lines
+# of Python that runs everywhere, needs no vendor account, and cannot itself
+# hallucinate.
+
+#: Tasks whose YAML carries this key get a HallucinationGuardrail attached. The
+#: value is either `true` or a mapping of the constructor's optional arguments
+#: (`threshold`, `context`).
+GUARDRAIL_KEY = "hallucination_guardrail"
+
+
+def _hallucination_guardrail(spec: Dict[str, Any], llm: Any) -> Optional[Any]:
+    """Build CrewAI's HallucinationGuardrail for a task, if its YAML asks for one.
+
+    Returns None when the task does not opt in, and — deliberately — also when
+    the installed crewai is too old to have the class. A missing optional
+    guardrail should not take the whole run down with an ImportError.
+
+    Note what the guardrail can and cannot see. It is constructed *before*
+    kickoff, so the only reference `context` available is text we can write here;
+    the tool output the report should be grounded in does not exist yet. Leaving
+    `context` unset makes CrewAI fall back to the task's own `expected_output`,
+    which is the honest default: the acceptance criterion is the only ground
+    truth that exists at build time. guardrails.py runs afterwards and therefore
+    gets the real evidence — the same asymmetry that makes an after-the-fact
+    check the stronger of the two.
+    """
+    requested = spec.get(GUARDRAIL_KEY)
+    if not requested:
+        return None
+
+    try:
+        from crewai.tasks.hallucination_guardrail import HallucinationGuardrail
+    except ImportError:  # pragma: no cover - depends on the installed crewai
+        logger.warning(
+            "crewai.tasks.hallucination_guardrail is unavailable in this crewai "
+            "version; continuing without it. guardrails.py still runs."
+        )
+        return None
+
+    options = requested if isinstance(requested, dict) else {}
+    return HallucinationGuardrail(llm=llm, **options)
+
+
+def guardrail_status() -> Dict[str, Any]:
+    """Which tasks carry CrewAI's guardrail, and whether it actually enforces.
+
+    Rides back on the run result so the UI never implies a check is running when
+    it is not. `enforcing` is detected rather than hardcoded: the placeholder's
+    `__call__` defers to a module-level `_validate_output_hook`, which only the
+    hosted platform installs, so "is that hook callable?" is the same question
+    the class itself asks. A build that does not define the hook at all is not
+    the placeholder, and is taken at its word.
+    """
+    tasks = [
+        name
+        for name, spec in _load_config("tasks").items()
+        if spec.get(GUARDRAIL_KEY)
+    ]
+    status: Dict[str, Any] = {"attached_to": tasks, "available": False, "enforcing": False}
+    try:
+        from crewai.tasks import hallucination_guardrail as module
+    except ImportError:  # pragma: no cover - depends on the installed crewai
+        status["note"] = "This crewai build has no HallucinationGuardrail."
+        return status
+
+    status["available"] = True
+    sentinel = "_validate_output_hook"
+    status["enforcing"] = (
+        callable(getattr(module, sentinel)) if hasattr(module, sentinel) else True
+    )
+    status["note"] = (
+        "CrewAI's HallucinationGuardrail is attached but is a no-op in the "
+        "open-source package — it passes every output. The grounding and advice "
+        "checks above are the ones doing the work."
+        if not status["enforcing"]
+        else "CrewAI's HallucinationGuardrail is active on: " + ", ".join(tasks)
+    )
+    return status
+
+
+# ---------------------------------------------------------------------------
 # Building the crew
 # ---------------------------------------------------------------------------
 
@@ -238,6 +340,8 @@ def build_crew(
             # Task order in the YAML is the run order, so anything a task lists
             # as context has already been built by the time we get here.
             context=[tasks[c] for c in spec.get("context") or []],
+            # None for tasks that do not ask for one, which is what Task expects.
+            guardrail=_hallucination_guardrail(spec, llm),
         )
 
     crew = Crew(
@@ -350,6 +454,10 @@ def run_analysis(
         # reports rather than blocks — see guardrails.check_report.
         report = str(result)
         guardrail = check_report(report, tracer.evidence)
+        # CrewAI's own per-task guardrail already ran, inside kickoff(). Report
+        # what it is so the UI can say whether it enforced anything — on
+        # open-source crewai it did not. See guardrail_status().
+        guardrail["crewai_guardrail"] = guardrail_status()
         if not guardrail["passed"]:
             logger.warning(
                 "Guardrail failed for %s — ungrounded figures: %s; advice phrases: %s",

@@ -147,7 +147,8 @@ itself. `tests/test_mcp_server.py` pins this.
 
 ### Guardrails
 
-Three of them, at three different points in the run.
+Three of our own, at three different points in the run — plus the framework's,
+which is worth a section of its own for what it does *not* do.
 
 **On the input.** `symbol` is untrusted text on its way into three agent prompts
 and into MCP tool arguments, so it is validated (`crew.validate_symbol`) before
@@ -191,6 +192,51 @@ Things worth arguing about in class, all of them visible in `guardrails.py`:
 
 Take `latest_quote` away from the Research agent and re-run: the report still
 quotes a price, and now the guardrail names the figure that came from nowhere.
+
+**And the framework's own.** CrewAI ships `HallucinationGuardrail`, attached to a
+task rather than run afterwards. The report task opts into it in `tasks.yaml`:
+
+```yaml
+report:
+  ...
+  hallucination_guardrail: true    # or a mapping: {threshold: 8.0}
+```
+
+```python
+from crewai.tasks.hallucination_guardrail import HallucinationGuardrail
+
+Task(..., guardrail=HallucinationGuardrail(llm=llm))
+```
+
+**In the open-source `crewai` package this class does nothing.** It is a
+placeholder whose `__call__` returns `(True, output)` for every input and logs
+"Hallucination detection is a no-op in open source, use it for free at
+https://app.crewai.com". `threshold` and `context` are stored and ignored. Hand
+it a report saying a stock trades at 999999.00 and that you should buy it, and it
+passes. The real implementation is installed by the hosted platform, which sets
+the module-level `_validate_output_hook` the placeholder defers to.
+
+It is wired up here anyway, and `crew.guardrail_status()` reports
+`enforcing: False` so the UI can say so in as many words. Three things worth
+taking from that:
+
+- **A guardrail nobody has verified is a liability, not a safeguard.** The import
+  succeeds, the constructor succeeds, the task runs, the logs look healthy. The
+  only signal that nothing is being checked is a warning line the size of every
+  other warning line. Check what your guardrails actually do before you count
+  them.
+- **It could not do the job here even if it were live.** It is constructed before
+  `kickoff()`, so the tool output the report should be grounded against does not
+  exist yet — the best reference context available at that moment is the task's
+  own `expected_output`. `guardrails.py` runs after and gets the real evidence.
+  When a check runs decides what it is able to know.
+- **Deterministic beats delegated for this question.** "Does 187.77 appear in any
+  tool result?" is settled by arithmetic in 190 lines that run offline, on any
+  machine, with no vendor account. Asking a model costs a call, adds latency, and
+  puts a thing that can hallucinate in charge of catching hallucinations.
+
+Good exam question: what would you have to build to make an LLM judge worth
+trusting here, and how would you test *it*?
 
 ---
 
